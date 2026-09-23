@@ -1,0 +1,28 @@
+# Render Blueprint: one web service that serves the API, the websocket and the app.
+# In Render: New > Blueprint > pick this repo. It asks for the values marked sync: false.
+services:
+  - type: web
+    name: yofellow
+    runtime: node
+    region: singapore        # closest Render region to India
+    plan: free               # sleeps after 15 min idle; first request then takes ~1 min
+    buildCommand: npm run render-build
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "22"
+      - key: JWT_SECRET
+        generateValue: true  # Render creates a long random secret
+      - key: DATABASE_URL    # Neon connection string (postgresql://...sslmode=require)
+        sync: false
+      - key: FIREBASE_API_KEY
+        sync: false
+      - key: FIREBASE_AUTH_DOMAIN
+        sync: false
+      - key: FIREBASE_PROJECT_ID
+        sync: false
+      - key: FIREBASE_APP_ID
+        sync: false
