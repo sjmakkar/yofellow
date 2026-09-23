@@ -16,9 +16,12 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@electric-sql/pglite": "^0.5.8",
     "cors": "^2.8.6",
     "express": "^5.2.1",
+    "jose": "^6.2.12",
     "jsonwebtoken": "^9.0.3",
+    "pg": "^8.23.0",
     "socket.io": "^4.8.3",
     "ws": "^8.21.3",
     "zod": "^4.6.5"
@@ -28,6 +31,7 @@
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^26.6.2",
+    "@types/pg": "^8.23.1",
     "@types/ws": "^8.18.1",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2"

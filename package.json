@@ -10,7 +10,8 @@
     "start": "npm start --prefix server",
     "dev:server:noradio": "npm run dev:noradio --prefix server",
     "radio": "npm run radio --prefix server",
-    "mesh-sim": "npm run mesh-sim --prefix server"
+    "mesh-sim": "npm run mesh-sim --prefix server",
+    "render-build": "npm install --include=dev && npm install --include=dev --prefix server && npm install --include=dev --prefix client && npm run build --prefix client"
   },
   "dependencies": {
     "tweetnacl": "^1.0.3"

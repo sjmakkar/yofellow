@@ -1,3 +1,4 @@
+import "./env.js"; // must stay first
 import express from "express";
 import cors from "cors";
 import http from "node:http";
@@ -7,12 +8,27 @@ import { api } from "./routes.js";
 import { initRealtime } from "./realtime.js";
 import "./rooms.js";
 import { startRadioHub } from "./radio.js";
+import { initDb, usingExternalPostgres } from "./db.js";
+
+await initDb();
+// Local dev: demo travellers and today's demo trips are (re)created on every start.
+if (process.env.NODE_ENV !== "production" && process.env.DEMO_BOTS !== "0") {
+  const { seedDemo } = await import("./seed.js");
+  await seedDemo(() => {});
+}
 
 const app = express();
+app.set("trust proxy", 1); // behind Render's HTTPS proxy
 app.use(cors());
 app.use(express.json({ limit: "100kb" }));
 app.get("/health", (_req, res) => res.json({ ok: true }));
 app.use("/api", api);
+
+// Errors from any route: log them, send a short message (never a stack trace).
+app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  console.error(err);
+  if (!res.headersSent) res.status(500).json({ error: "Something went wrong on our side. Please try again." });
+});
 
 // In production, serve the built React app from ../client/dist
 const dist = path.resolve(process.cwd(), "../client/dist");
@@ -35,4 +51,6 @@ server.on("error", (e: NodeJS.ErrnoException) => {
   }
   throw e;
 });
-server.listen(PORT, () => console.log(`YoFellow API on http://localhost:${PORT}`));
+server.listen(PORT, () =>
+  console.log(`YoFellow API on http://localhost:${PORT} (database: ${usingExternalPostgres ? "Postgres via DATABASE_URL" : "local PGlite in server/.pgdata"})`)
+);

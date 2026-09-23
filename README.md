@@ -23,25 +23,26 @@ Meet people on the same train, flight, bus or metro. Chat in the journey's group
 
 ## Run it locally
 
-Needs Node 22.13 or newer. The database is the SQLite built into Node, so there is nothing to compile and no Visual Studio or build tools are needed on Windows. You may see an "SQLite is an experimental feature" warning; it is harmless.
+Needs Node 22.13 or newer. Nothing else: the database is real Postgres running inside Node (PGlite), stored in `server/.pgdata`. No Postgres install, no Visual Studio, no build tools.
 
 ```bash
 npm run install:all
-npm run seed               # demo travellers, group messages, signal data for today's trips
-npm run dev:server         # API on :4000, plus the dev radio hub on :4100
+npm run dev:server         # API on :4000 + dev radio hub on :4100, creates demo data for today
 npm run dev:client         # app on http://localhost:5173
 ```
 
-Log in with any 10 digit number and code `123456`, then add **Train 12951** (coach B3) for today.
+Log in with any 10 digit number and code `123456`, then add **Train 12951** (coach B3) for today. Demo travellers and today's demo trips are created automatically every time the dev server starts.
 
-**Try the offline mesh in a browser:** open two different browsers (or a normal and an incognito window), log in with 2 numbers, and add the same train in both. Then stop the API only and keep the radio hub:
+To use a real Postgres locally instead, set `DATABASE_URL` before starting the server.
+
+**Try the offline mesh in a browser:** open two different browsers (or a normal and an incognito window), log in with 2 numbers, and add the same train in both. Then run the API and the radio hub separately:
 
 ```bash
-npm run dev:server:noradio   # terminal 1: API without the hub
-npm run radio                # terminal 2: the Bluetooth stand-in
+npm run radio                # terminal 1: the Bluetooth stand-in
+npm run dev:server:noradio   # terminal 2: API without the hub
 ```
 
-Stop terminal 1. Both phones show Offline, and group messages still arrive "via nearby phones". Start it again and everything syncs.
+Stop terminal 2. Both phones show Offline, and group messages still arrive "via nearby phones". Start it again and everything syncs.
 
 **Mesh simulation:** `npm run mesh-sim` runs 72 phones in 18 coaches with no internet.
 
@@ -49,14 +50,18 @@ Stop terminal 1. Both phones show Offline, and group messages still arrive "via 
 
 Browsers cannot use Bluetooth mesh. In dev, `server/src/radio.ts` stands in for Bluetooth range: it only passes frames between phones on the same journey and knows nothing about users. The mesh logic (`shared/mesh.ts`) is the real one. For the phone app, write a `Transport` using Bluetooth LE / Wi-Fi Direct (Google Nearby Connections on Android, MultipeerConnectivity on iOS, or a cross platform SDK) in React Native, and reuse `shared/mesh.ts` unchanged.
 
-## Production
+## Deploy (pilot): Neon + Firebase + Render
 
-```bash
-npm run build
-NODE_ENV=production JWT_SECRET=... npm start   # serves the app too; radio hub and demo bots are off
-```
+1. **Neon** (neon.tech): create a project (region Singapore or Mumbai) and copy the connection string (`postgresql://...?sslmode=require`). Tables are created automatically on first start.
+2. **Firebase** (console.firebase.google.com): create a project, enable **Authentication → Sign-in method → Phone**, and register a **Web app** to get `apiKey`, `authDomain`, `projectId`, `appId`. Optional: add test numbers under Phone → Phone numbers for testing.
+3. **Render** (render.com): **New → Blueprint**, pick this GitHub repo. `render.yaml` sets everything up and asks for `DATABASE_URL` and the four `FIREBASE_*` values. `JWT_SECRET` is generated for you.
+4. After the first deploy, copy your Render address (like `yofellow.onrender.com`) into **Firebase → Authentication → Settings → Authorized domains**, or SMS login will be blocked.
+5. Open the Render URL on your phone and use **Add to Home screen** to install it like an app.
 
-Before going live: SMS provider in `server/src/auth.ts`, Postgres instead of SQLite (all SQL goes through the small wrapper in `server/src/db.ts`), HTTPS (needed for service workers and location), and the native Bluetooth transport.
+Notes:
+- Render's free plan sleeps after 15 minutes without visits; the next visit takes about a minute to wake up. The $7/month plan stays awake.
+- In production the dev login (123456), demo travellers and the radio hub are all switched off.
+- Firebase gives a limited number of free SMS; check current pricing before inviting many people.
 
 ## Code map
 
@@ -70,9 +75,11 @@ server/src
   rooms.ts       group rooms, offline pack, /sync outbox endpoint, relay verification, device keys, signal map
   radio.ts       dev only Bluetooth stand-in
   realtime.ts    Socket.IO: per user and per room channels
-  vibe.ts games.ts demo.ts seed.ts db.ts auth.ts
+  db.ts          Postgres: PGlite locally, DATABASE_URL (Neon) in production; schema
+  auth.ts        JWT sessions, Firebase phone token check, dev OTP
+  vibe.ts games.ts demo.ts seed.ts
 client/src
-  lib/           idb (IndexedDB), net (status), outbox, keys, mesh (transport), group (message merge), signal
+  lib/           idb (IndexedDB), net (status), outbox, keys, mesh (transport), group (message merge), signal, phoneAuth (Firebase)
   pages/         Login, Profile, Trips, TripDetail (Group + People), Chats, Chat
   components/    GroupRoom, NetBadge, GameCard, GamePicker, Avatar
   public/sw.js   service worker

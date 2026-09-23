@@ -28,30 +28,28 @@ export function demoGameAnswer(type: string, prompt: any): number | string {
   return Math.floor(Math.random() * 2);
 }
 
-export function demoPhone(userId: number) {
-  const r = db.prepare("SELECT phone FROM users WHERE id=?").get(userId) as { phone: string } | undefined;
+export async function demoPhone(userId: number) {
+  const r = await db.prepare("SELECT phone FROM users WHERE id=?").get<{ phone: string }>(userId);
   return r?.phone || "";
 }
 
 // ---------- demo travellers in group rooms ----------
 import { newKeypair, signEnvelope, uuid } from "../../shared/mesh.js";
 
-db.exec("CREATE TABLE IF NOT EXISTS demo_keys (user_id INTEGER PRIMARY KEY, secret TEXT NOT NULL, pubkey TEXT NOT NULL)");
-
 /** Demo users sign group messages like real phones do. */
-export function demoSecret(userId: number) {
-  let row = db.prepare("SELECT secret FROM demo_keys WHERE user_id=?").get(userId) as { secret: string } | undefined;
+export async function demoSecret(userId: number) {
+  let row = await db.prepare("SELECT secret FROM demo_keys WHERE user_id=?").get<{ secret: string }>(userId);
   if (!row) {
     const kp = newKeypair();
-    db.prepare("INSERT INTO demo_keys (user_id, secret, pubkey) VALUES (?,?,?)").run(userId, kp.secretKey, kp.publicKey);
-    db.prepare("INSERT OR IGNORE INTO device_keys (user_id, pubkey) VALUES (?,?)").run(userId, kp.publicKey);
+    await db.prepare("INSERT INTO demo_keys (user_id, secret, pubkey) VALUES (?,?,?)").run(userId, kp.secretKey, kp.publicKey);
+    await db.prepare("INSERT INTO device_keys (user_id, pubkey) VALUES (?,?) ON CONFLICT DO NOTHING").run(userId, kp.publicKey);
     row = { secret: kp.secretKey };
   }
   return row.secret;
 }
 
-export function demoEnvelope(userId: number, name: string, roomId: number, body: string, ts = Date.now()) {
-  return signEnvelope({ id: uuid(), room: roomId, sender: userId, name, body, ts, hops: 0, ttl: 12 }, demoSecret(userId));
+export async function demoEnvelope(userId: number, name: string, roomId: number, body: string, ts = Date.now()) {
+  return signEnvelope({ id: uuid(), room: roomId, sender: userId, name, body, ts, hops: 0, ttl: 12 }, await demoSecret(userId));
 }
 
 const GROUP_LINES = [
@@ -64,19 +62,25 @@ const GROUP_LINES = [
   "What's everyone reading or watching on this trip?",
 ];
 
-export function demoGroupReply(
+export async function demoGroupReply(
   room: { id: number; trip_key: string; kind: string },
   fromUser: number,
-  ingest: (env: unknown, uploader: number) => unknown
+  ingest: (env: unknown, uploader: number) => Promise<unknown>
 ) {
-  if (!DEMO_BOTS || (room.kind !== "train" && room.kind !== "topic")) return;
+  if (!DEMO_BOTS || process.env.YF_SEEDING || (room.kind !== "train" && room.kind !== "topic")) return;
   if (Math.random() > 0.6) return;
-  const bots = db
+  const bots = await db
     .prepare("SELECT u.id, u.name, u.phone FROM trips t JOIN users u ON u.id=t.user_id WHERE t.trip_key=? AND u.id<>?")
-    .all(room.trip_key, fromUser) as { id: number; name: string; phone: string }[];
+    .all<{ id: number; name: string; phone: string }>(room.trip_key, fromUser);
   const demo = bots.filter((b) => isDemoUser(b.phone));
   if (!demo.length) return;
   const bot = demo[Math.floor(Math.random() * demo.length)];
   const line = GROUP_LINES[Math.floor(Math.random() * GROUP_LINES.length)];
-  setTimeout(() => ingest(demoEnvelope(bot.id, bot.name, room.id, line), bot.id), 2500);
+  setTimeout(async () => {
+    try {
+      await ingest(await demoEnvelope(bot.id, bot.name, room.id, line), bot.id);
+    } catch (e) {
+      console.error(e);
+    }
+  }, 2500);
 }

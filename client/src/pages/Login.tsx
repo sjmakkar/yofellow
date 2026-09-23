@@ -1,5 +1,6 @@
-import { useState } from "react";
-import { api, tokenStore, type Me } from "../api";
+import { useEffect, useState } from "react";
+import { tokenStore } from "../api";
+import { sendCode, confirmCode, loginMode } from "../lib/phoneAuth";
 import { useApp } from "../App";
 
 export default function Login() {
@@ -12,13 +13,17 @@ export default function Login() {
   const [busy, setBusy] = useState(false);
 
   const cleanPhone = phone.replace(/[\s-]/g, "");
+  const [realSms, setRealSms] = useState(false);
+  useEffect(() => {
+    loginMode().then((c) => setRealSms(!!c));
+  }, []);
 
   async function sendOtp(e: React.FormEvent) {
     e.preventDefault();
     setErr("");
     setBusy(true);
     try {
-      const r = await api<{ devCode?: string }>("/auth/request-otp", { body: { phone: cleanPhone } });
+      const r = await sendCode(cleanPhone, "recaptcha");
       setDevCode(r.devCode);
       setStep("code");
     } catch (e) {
@@ -33,7 +38,7 @@ export default function Login() {
     setErr("");
     setBusy(true);
     try {
-      const r = await api<{ token: string; user: Me }>("/auth/verify", { body: { phone: cleanPhone, code } });
+      const r = await confirmCode(cleanPhone, code);
       tokenStore.set(r.token);
       setMe(r.user);
     } catch (e) {
@@ -57,8 +62,9 @@ export default function Login() {
             <input key="phone" inputMode="tel" placeholder="98765 43210" value={phone} onChange={(e) => setPhone(e.target.value)} autoFocus />
           </label>
           <button className="btn primary" disabled={busy || cleanPhone.length < 10}>
-            Send code
+            {busy ? "Sending…" : "Send code"}
           </button>
+          {realSms && <p className="hint">We'll send you an SMS with a 6 digit code. Numbers without +country code are treated as Indian (+91).</p>}
         </form>
       ) : (
         <form onSubmit={verify} className="card stack">
@@ -76,6 +82,7 @@ export default function Login() {
         </form>
       )}
       {err && <p className="error">{err}</p>}
+      <div id="recaptcha" />
       <p className="fine">18+ only. Your seat is never shown unless both of you agree to meet.</p>
     </div>
   );
