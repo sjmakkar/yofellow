@@ -1,0 +1,21 @@
+{
+  "name": "yofellow",
+  "private": true,
+  "scripts": {
+    "install:all": "npm install && npm install --prefix server && npm install --prefix client",
+    "seed": "npm run seed --prefix server",
+    "dev:server": "npm run dev --prefix server",
+    "dev:client": "npm run dev --prefix client",
+    "build": "npm run build --prefix client",
+    "start": "npm start --prefix server",
+    "dev:server:noradio": "npm run dev:noradio --prefix server",
+    "radio": "npm run radio --prefix server",
+    "mesh-sim": "npm run mesh-sim --prefix server"
+  },
+  "dependencies": {
+    "tweetnacl": "^1.0.3"
+  },
+  "engines": {
+    "node": ">=22.13"
+  }
+}
