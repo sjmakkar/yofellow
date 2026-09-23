@@ -69,10 +69,16 @@ export async function confirmCode(phone: string, code: string): Promise<{ token:
 
 function firebaseMessage(e: unknown) {
   const c = (e as { code?: string }).code || "";
+  console.error("Firebase phone auth error:", c, e);
   if (c.includes("invalid-verification-code")) return "Wrong code, please check the SMS";
   if (c.includes("code-expired")) return "Code expired, please request a new one";
   if (c.includes("too-many-requests")) return "Too many attempts. Please wait a bit and try again";
   if (c.includes("invalid-phone-number")) return "Please enter a valid phone number";
   if (c.includes("quota-exceeded")) return "SMS limit reached for today, please try later";
-  return "Could not verify your number. Please try again";
+  if (c.includes("billing-not-enabled")) return "SMS login needs the Firebase Blaze plan (billing) to be turned on";
+  if (c.includes("operation-not-allowed")) return "Phone sign in is not enabled in Firebase (Authentication > Sign-in method > Phone)";
+  if (c.includes("unauthorized-domain")) return "This website is not in Firebase Authorized domains yet";
+  if (c.includes("captcha-check-failed")) return "Security check failed. Refresh the page and try again";
+  if (c.includes("invalid-app-credential")) return "Security check failed (reCAPTCHA). Refresh the page and try again";
+  return `Could not verify your number (${c || "unknown error"}). Please try again`;
 }

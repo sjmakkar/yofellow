@@ -1,6 +1,6 @@
 // Service worker: keeps the app shell on the phone so YoFellow opens with no network.
 // API data is cached separately in IndexedDB by the app itself.
-const CACHE = "yofellow-shell-v1";
+const CACHE = "yofellow-shell-v2";
 const SHELL = ["/", "/index.html", "/manifest.webmanifest", "/icon.svg"];
 
 // Cache the shell plus the hashed JS/CSS bundles that index.html points to,
@@ -35,7 +35,11 @@ self.addEventListener("fetch", (e) => {
     e.respondWith(
       fetch(req)
         .then((res) => {
-          caches.open(CACHE).then((c) => c.put("/index.html", res.clone()));
+          // Copy the response right away, before the browser starts reading it.
+          if (res.ok) {
+            const copy = res.clone();
+            caches.open(CACHE).then((c) => c.put("/index.html", copy));
+          }
           return res;
         })
         .catch(() => caches.match("/index.html"))
@@ -48,7 +52,10 @@ self.addEventListener("fetch", (e) => {
       (hit) =>
         hit ||
         fetch(req).then((res) => {
-          if (res.ok) caches.open(CACHE).then((c) => c.put(req, res.clone()));
+          if (res.ok) {
+            const copy = res.clone();
+            caches.open(CACHE).then((c) => c.put(req, copy));
+          }
           return res;
         })
     )
