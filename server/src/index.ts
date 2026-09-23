@@ -1,4 +1,5 @@
 import "./env.js"; // must stay first
+import "./startup.js"; // logs settings and makes startup errors readable
 import express from "express";
 import cors from "cors";
 import http from "node:http";
@@ -10,7 +11,17 @@ import "./rooms.js";
 import { startRadioHub } from "./radio.js";
 import { initDb, usingExternalPostgres } from "./db.js";
 
-await initDb();
+try {
+  await initDb();
+} catch (e) {
+  const msg = (e as Error).message || String(e);
+  console.error("\nCould not connect to the database: " + msg);
+  if (/password authentication|role .* does not exist/i.test(msg)) console.error("Hint: the username or password in DATABASE_URL is wrong. Copy it again from Neon.");
+  else if (/ENOTFOUND|getaddrinfo/i.test(msg)) console.error("Hint: the host in DATABASE_URL is wrong. Copy the full string again from Neon.");
+  else if (/ssl|SSL/.test(msg)) console.error("Hint: add ?sslmode=require at the end of DATABASE_URL.");
+  else if (/timeout|ECONNREFUSED/i.test(msg)) console.error("Hint: the database is not reachable. Check the Neon project is active.");
+  process.exit(1);
+}
 // Local dev: demo travellers and today's demo trips are (re)created on every start.
 if (process.env.NODE_ENV !== "production" && process.env.DEMO_BOTS !== "0") {
   const { seedDemo } = await import("./seed.js");

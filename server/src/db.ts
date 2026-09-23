@@ -15,6 +15,9 @@ const INT8 = 20; // COUNT(*) and BIGINT columns: return JS numbers, not strings
 export const usingExternalPostgres = !!process.env.DATABASE_URL;
 
 function makeDriver(): Driver {
+  if (process.env.NODE_ENV === "production" && !process.env.DATABASE_URL) {
+    throw new Error("DATABASE_URL is not set. Add your Neon connection string (postgresql://...sslmode=require) in the server settings.");
+  }
   if (process.env.DATABASE_URL) {
     pg.types.setTypeParser(INT8, (v) => Number(v));
     const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: Number(process.env.PG_POOL_MAX) || 10 });
