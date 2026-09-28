@@ -6,7 +6,7 @@ import { kvGet, kvSet } from "../lib/idb";
 import { useNet } from "../lib/net";
 import Avatar from "./Avatar";
 
-const ROOM_ICON: Record<Room["kind"], string> = { train: "🚆", coach: "🚪", women: "👩", topic: "#" };
+const ROOM_ICON: Record<Room["kind"], string> = { train: "🚆", coach: "🚪", women: "👩", topic: "#", cab: "🚕" };
 
 type Props = {
   tripId: number;
@@ -111,11 +111,13 @@ export default function GroupRoom({ tripId, rooms, pack, onWave, onRoomsChanged 
             {r.kind !== "topic" && <small>{r.members}</small>}
           </button>
         ))}
-        <button className="roomtab add" onClick={newTopic}>+ Topic</button>
+        {tripId > 0 && <button className="roomtab add" onClick={newTopic}>+ Topic</button>}
       </div>
 
       <p className="roomhint">
-        {room.kind === "women"
+        {room.kind === "cab"
+          ? "Your cab group. Only people in this cab see it, and it stays open after the trip."
+          : room.kind === "women"
           ? "Only women on this journey can see this room."
           : room.kind === "coach"
           ? "Only people in your coach. Never relayed through other phones."

@@ -9,6 +9,10 @@ import TripDetail from "./pages/TripDetail";
 import Chats from "./pages/Chats";
 import Chat from "./pages/Chat";
 import NetBadge from "./components/NetBadge";
+import Games from "./pages/Games";
+import Play from "./pages/Play";
+import Solo from "./pages/Solo";
+import CabGroup from "./pages/CabGroup";
 import { startOutbox } from "./lib/outbox";
 import { registerDeviceKey } from "./lib/keys";
 import { wireGroupSync } from "./lib/group";
@@ -70,11 +74,17 @@ export default function App() {
     const onMatch = (d: { matchId: number; with: PublicUser }) => {
       toast(`🎉 You matched with ${d.with.name}!`);
     };
+    const onCabRequest = (d: { from: PublicUser }) => toast(`🚕 ${d.from.name} wants to share your cab`);
+    const onCabUpdate = (d: { accepted?: boolean }) => d.accepted !== undefined && toast(d.accepted ? "🚕 You're in! Your cab share was accepted" : "🚕 Your cab request was declined");
     s.on("wave", onWave);
     s.on("match", onMatch);
+    s.on("cab:request", onCabRequest);
+    s.on("cab:update", onCabUpdate);
     return () => {
       s.off("wave", onWave);
       s.off("match", onMatch);
+      s.off("cab:request", onCabRequest);
+      s.off("cab:update", onCabUpdate);
     };
   }, [me, toast]);
 
@@ -105,6 +115,10 @@ export default function App() {
                 <Route path="/chats" element={<Chats />} />
                 <Route path="/chats/:id" element={<Chat />} />
                 <Route path="/profile" element={<Profile />} />
+                <Route path="/games" element={<Games />} />
+                <Route path="/play/:id" element={<Play />} />
+                <Route path="/solo/:kind" element={<Solo />} />
+                <Route path="/groups/:id" element={<CabGroup />} />
                 <Route path="*" element={<Navigate to="/" />} />
               </Routes>
             </main>
@@ -114,6 +128,9 @@ export default function App() {
               </NavLink>
               <NavLink to="/chats">
                 <span>💬</span>Chats
+              </NavLink>
+              <NavLink to="/games">
+                <span>🎮</span>Games
               </NavLink>
               <NavLink to="/profile">
                 <span>🙂</span>Me

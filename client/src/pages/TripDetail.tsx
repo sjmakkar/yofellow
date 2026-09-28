@@ -6,6 +6,8 @@ import { getSocket } from "../socket";
 import { formatDate } from "./Trips";
 import Avatar from "../components/Avatar";
 import GroupRoom from "../components/GroupRoom";
+import TripGames from "../components/TripGames";
+import CabShare from "../components/CabShare";
 import { savePack } from "../lib/group";
 import { kvGet } from "../lib/idb";
 import { enqueue } from "../lib/outbox";
@@ -23,7 +25,7 @@ export default function TripDetail() {
   const [pack, setPack] = useState<Pack | null>(null);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [travellers, setTravellers] = useState<Traveller[]>([]);
-  const [tab, setTab] = useState<"group" | "people">("group");
+  const [tab, setTab] = useState<"group" | "people" | "games" | "cab">("group");
   const [err, setErr] = useState("");
   const [myKey, setMyKey] = useState<string | null>(null);
   const [share, setShare] = useState(() => {
@@ -169,15 +171,21 @@ export default function TripDetail() {
         </div>
       </div>
 
-      <div className="seg tabs2">
+      <div className="seg tabs4">
         <button className={tab === "group" ? "on" : ""} onClick={() => setTab("group")}>💬 Group</button>
-        <button className={tab === "people" ? "on" : ""} onClick={() => setTab("people")}>🙂 People ({travellers.length})</button>
+        <button className={tab === "people" ? "on" : ""} onClick={() => setTab("people")}>🙂 People {travellers.length}</button>
+        <button className={tab === "games" ? "on" : ""} onClick={() => setTab("games")}>🎮 Games</button>
+        <button className={tab === "cab" ? "on" : ""} onClick={() => setTab("cab")}>🚕 Cab</button>
       </div>
 
       {tab === "group" ? (
         <GroupRoom tripId={tripId} rooms={rooms} pack={pack} onWave={wave} onRoomsChanged={refreshRooms} />
-      ) : (
+      ) : tab === "people" ? (
         <People travellers={travellers} trip={trip} onWave={wave} />
+      ) : tab === "games" ? (
+        <TripGames tripId={tripId} tripKey={trip.key} />
+      ) : (
+        <CabShare tripId={tripId} stationHint={trip.to || `${MODE_LABEL[trip.mode]} ${trip.number}`} />
       )}
     </div>
   );

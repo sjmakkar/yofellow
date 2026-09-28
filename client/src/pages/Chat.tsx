@@ -177,7 +177,13 @@ export default function Chat() {
 
       <div className="msgs" ref={listRef}>
         {msgs.map((m) =>
-          m.kind === "system" ? (
+          m.kind === "play" && m.playId ? (
+            <Link key={m.uuid || m.id} to={`/play/${m.playId}`} className={`gamecard playcard ${m.senderId === me.id ? "mine" : ""}`}>
+              <div className="gtitle">🎮 Board game</div>
+              <b>{m.senderId === me.id ? "You started a game" : `${match.with.name} started a game`}</b>
+              <span className="btn small primary">Open game</span>
+            </Link>
+          ) : m.kind === "system" ? (
             <div key={m.id} className="sys">{m.body}</div>
           ) : m.kind === "game" && m.game ? (
             <GameCard key={m.id} game={m.game} meId={me.id} otherName={match.with.name} mine={m.senderId === me.id} />

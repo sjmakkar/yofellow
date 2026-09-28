@@ -4,8 +4,14 @@ import { api, MODE_ICON, type Match } from "../api";
 import { getSocket } from "../socket";
 import Avatar from "../components/Avatar";
 
+type CabGroupRow = { id: number; dropArea: string; riders: number; room: { id: number; name: string; last: string | null } | null };
+
 export default function Chats() {
   const [matches, setMatches] = useState<Match[] | null>(null);
+  const [cabs, setCabs] = useState<CabGroupRow[]>([]);
+  useEffect(() => {
+    api<CabGroupRow[]>("/cabs/mine").then(setCabs).catch(() => {});
+  }, []);
   const load = () => api<Match[]>("/matches").then(setMatches);
 
   useEffect(() => {
@@ -26,6 +32,16 @@ export default function Chats() {
       <header className="pagehead">
         <h2>Chats</h2>
       </header>
+      {cabs.filter((c) => c.room).map((c) => (
+        <Link key={c.id} to={`/groups/${c.room!.id}`} className="card chatrow">
+          <div className="avatar cabav">🚕</div>
+          <div className="grow ellipsis">
+            <b>{c.room!.name}</b>
+            <div className="muted small ellipsis">{c.room!.last || `${c.riders} riders`}</div>
+          </div>
+          <span className="small muted">Cab group</span>
+        </Link>
+      ))}
       {matches === null ? (
         <p className="muted">Loading…</p>
       ) : matches.length === 0 ? (

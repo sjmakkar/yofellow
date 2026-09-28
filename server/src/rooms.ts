@@ -7,7 +7,7 @@ import { emitToRoom, setRoomAccess } from "./realtime.js";
 import { checkGroupMessage, verifyEnvelope, newKeypair, signCert, type Envelope, type KeyCert } from "../../shared/mesh.js";
 import { demoGroupReply } from "./demo.js";
 
-export type RoomRow = { id: number; trip_key: string; kind: "train" | "coach" | "women" | "topic"; coach: string; name: string; created_by: number | null };
+export type RoomRow = { id: number; trip_key: string; kind: "train" | "coach" | "women" | "topic" | "cab"; coach: string; name: string; created_by: number | null };
 type RoomMsgRow = { id: number; uuid: string; room_id: number; sender_id: number; body: string; client_ts: number; sig: string; sender_name: string; hidden: number; created_at: string };
 
 const dayBefore = () => new Date(Date.now() - 86400000).toISOString().slice(0, 10);
@@ -44,6 +44,13 @@ function tripOnKey(userId: number, tripKey: string) {
 export async function roomAccess(user: UserRow, roomId: number) {
   const room = await db.prepare("SELECT * FROM rooms WHERE id=?").get<RoomRow>(roomId);
   if (!room) return null;
+  if (room.kind === "cab") {
+    // Cab groups belong to their members and stay open after the journey.
+    const ok = await db
+      .prepare("SELECT 1 FROM cab_shares c LEFT JOIN cab_members m ON m.cab_id=c.id AND m.user_id=? WHERE c.room_id=? AND (c.owner_id=? OR m.status='accepted')")
+      .get(user.id, room.id, user.id);
+    return ok ? room : null;
+  }
   const trip = await tripOnKey(user.id, room.trip_key);
   if (!trip) return null;
   if (room.kind === "coach" && (trip.coach || "").toUpperCase() !== room.coach) return null;
@@ -56,6 +63,7 @@ setRoomAccess(async (uid, roomId) => {
 });
 
 export function isArchived(room: RoomRow) {
+  if (room.kind === "cab") return false;
   const date = room.trip_key.split("|")[2];
   return date < dayBefore(); // read only from the second day after the journey
 }
@@ -68,11 +76,13 @@ async function memberCount(room: RoomRow) {
       ? db.prepare("SELECT COUNT(DISTINCT t.user_id) c FROM trips t JOIN users u ON u.id=t.user_id WHERE t.trip_key=? AND u.gender='woman'").get<{ c: number }>(room.trip_key)
       : room.kind === "topic"
       ? db.prepare("SELECT COUNT(DISTINCT sender_id) c FROM room_messages WHERE room_id=?").get<{ c: number }>(room.id)
+      : room.kind === "cab"
+      ? db.prepare("SELECT 1 + COUNT(*) c FROM cab_members m JOIN cab_shares c ON c.id=m.cab_id WHERE c.room_id=? AND m.status='accepted' AND m.user_id<>c.owner_id").get<{ c: number }>(room.id)
       : db.prepare("SELECT COUNT(DISTINCT user_id) c FROM trips WHERE trip_key=?").get<{ c: number }>(room.trip_key);
   return (await q)?.c ?? 0;
 }
 
-async function roomOut(room: RoomRow) {
+export async function roomOut(room: RoomRow) {
   const last = await db
     .prepare("SELECT body, sender_name FROM room_messages WHERE room_id=? AND hidden=0 ORDER BY id DESC LIMIT 1")
     .get<{ body: string; sender_name: string }>(room.id);
@@ -90,7 +100,7 @@ async function roomOut(room: RoomRow) {
 export async function roomsFor(user: UserRow, trip: TripRow) {
   await ensureRooms(trip);
   const rows = await db
-    .prepare("SELECT * FROM rooms WHERE trip_key=? ORDER BY CASE kind WHEN 'train' THEN 0 WHEN 'coach' THEN 1 WHEN 'women' THEN 2 ELSE 3 END, id")
+    .prepare("SELECT * FROM rooms WHERE trip_key=? ORDER BY CASE kind WHEN 'train' THEN 0 WHEN 'cab' THEN 1 WHEN 'coach' THEN 2 WHEN 'women' THEN 3 ELSE 4 END, id")
     .all<RoomRow>(trip.trip_key);
   const out = [];
   for (const r of rows) if (await roomAccess(user, r.id)) out.push(await roomOut(r));

@@ -184,7 +184,8 @@ CREATE TABLE IF NOT EXISTS rooms (
   created_by INTEGER,
   created_at TIMESTAMPTZ DEFAULT now()
 );
-CREATE UNIQUE INDEX IF NOT EXISTS idx_rooms_fixed ON rooms(trip_key, kind, coach) WHERE kind <> 'topic';
+DROP INDEX IF EXISTS idx_rooms_fixed;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_rooms_fixed2 ON rooms(trip_key, kind, coach) WHERE kind IN ('train', 'coach', 'women');
 CREATE TABLE IF NOT EXISTS room_messages (
   id SERIAL PRIMARY KEY,
   uuid TEXT UNIQUE NOT NULL,
@@ -228,6 +229,49 @@ CREATE TABLE IF NOT EXISTS server_keys (
   id INTEGER PRIMARY KEY CHECK (id = 1),
   secret TEXT NOT NULL,
   pubkey TEXT NOT NULL
+);
+-- Board games (chess, ludo, tic-tac-toe, connect 4) between people.
+CREATE TABLE IF NOT EXISTS play_sessions (
+  id SERIAL PRIMARY KEY,
+  kind TEXT NOT NULL,
+  trip_key TEXT,                   -- table open to people on a journey
+  match_id INTEGER,                -- or a game inside a private chat
+  seats TEXT NOT NULL,             -- JSON [{ user, name, bot }]
+  max_players INTEGER NOT NULL,
+  women_only INTEGER DEFAULT 0,
+  state TEXT,                      -- JSON game state, null while waiting
+  status TEXT NOT NULL,            -- 'waiting' | 'active' | 'done'
+  winners TEXT DEFAULT '[]',
+  result_text TEXT,
+  version INTEGER NOT NULL DEFAULT 0,
+  created_by INTEGER NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_play_trip ON play_sessions(trip_key, status);
+-- Cab sharing after the journey.
+CREATE TABLE IF NOT EXISTS cab_shares (
+  id SERIAL PRIMARY KEY,
+  trip_key TEXT NOT NULL,
+  owner_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  drop_area TEXT NOT NULL,
+  leave_when TEXT NOT NULL,
+  seats INTEGER NOT NULL,          -- people who can join (not counting the owner)
+  women_only INTEGER DEFAULT 0,
+  note TEXT,
+  fare INTEGER,                    -- total fare in rupees, set by the owner
+  vehicle TEXT,                    -- cab number, for sharing ride details
+  status TEXT NOT NULL DEFAULT 'open', -- 'open' | 'closed'
+  room_id INTEGER,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_cab_trip ON cab_shares(trip_key);
+CREATE TABLE IF NOT EXISTS cab_members (
+  cab_id INTEGER NOT NULL REFERENCES cab_shares(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  status TEXT NOT NULL,            -- 'pending' | 'accepted' | 'declined'
+  created_at TIMESTAMPTZ DEFAULT now(),
+  PRIMARY KEY (cab_id, user_id)
 );
 -- Dev only: keys for demo travellers so they can sign group messages.
 CREATE TABLE IF NOT EXISTS demo_keys (

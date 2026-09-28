@@ -1,6 +1,8 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { useApp } from "../App";
+import { GAME_INFO } from "../lib/play";
 
 const GAMES = [
   { type: "wyr", icon: "🤔", name: "Would you rather", desc: "Pick one, see if you agree" },
@@ -12,7 +14,18 @@ const GAMES = [
 
 export default function GamePicker({ matchId, onClose }: { matchId: number; onClose: () => void }) {
   const { toast } = useApp();
+  const nav = useNavigate();
   const [ttl, setTtl] = useState(false);
+
+  async function board(kind: string) {
+    try {
+      const s = await api<{ id: number }>("/play", { body: { kind, matchId } });
+      onClose();
+      nav(`/play/${s.id}`);
+    } catch (e) {
+      toast((e as Error).message);
+    }
+  }
   const [statements, setStatements] = useState(["", "", ""]);
   const [lie, setLie] = useState<number | null>(null);
 
@@ -30,7 +43,16 @@ export default function GamePicker({ matchId, onClose }: { matchId: number; onCl
       <div className="sheet" onClick={(e) => e.stopPropagation()}>
         {!ttl ? (
           <>
-            <h3>Play a game</h3>
+            <h3>Board games</h3>
+            <div className="gamegrid small">
+              {Object.entries(GAME_INFO).map(([k, g]) => (
+                <button key={k} className="gametile" onClick={() => board(k)}>
+                  <span className="gicon">{g.icon}</span>
+                  <b>{g.title}</b>
+                </button>
+              ))}
+            </div>
+            <h3>Quick icebreakers</h3>
             {GAMES.map((g) => (
               <button key={g.type} className="gamepick" onClick={() => (g.type === "two_truths" ? setTtl(true) : start(g.type))}>
                 <span className="gicon">{g.icon}</span>

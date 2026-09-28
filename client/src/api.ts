@@ -59,7 +59,8 @@ export type Message = {
   failed?: string;
   matchId: number;
   senderId: number;
-  kind: "text" | "game" | "system";
+  kind: "text" | "game" | "system" | "play";
+  playId?: number;
   body: string;
   at: string;
   game?: Game;
@@ -142,7 +143,7 @@ export const COACH_HINT: Record<Mode, string> = {
 };
 export const INTENT_LABEL: Record<Intent, string> = { friends: "Friends", dating: "Dating", chat: "Just chat" };
 
-export type Room = { id: number; kind: "train" | "coach" | "women" | "topic"; name: string; coach: string | null; members: number; archived: boolean; last: string | null };
+export type Room = { id: number; kind: "train" | "coach" | "women" | "topic" | "cab"; name: string; coach: string | null; members: number; archived: boolean; last: string | null };
 export type Pack = {
   savedAt: number;
   trip: Trip & { key: string };

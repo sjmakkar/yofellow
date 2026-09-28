@@ -8,6 +8,8 @@ import fs from "node:fs";
 import { api } from "./routes.js";
 import { initRealtime } from "./realtime.js";
 import "./rooms.js";
+import "./play.js";
+import "./cab.js";
 import { startRadioHub } from "./radio.js";
 import { initDb, usingExternalPostgres } from "./db.js";
 

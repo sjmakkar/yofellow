@@ -269,7 +269,7 @@ async function matchOut(m: MatchRow, uid: number) {
     id: m.id,
     with: publicUser(other),
     trip: tripFromKey(m.trip_key),
-    lastMessage: last ? { body: last.kind === "game" ? "Started a game" : last.body, at: last.created_at, mine: last.sender_id === uid } : null,
+    lastMessage: last ? { body: last.kind === "game" || last.kind === "play" ? "Started a game" : last.body, at: last.created_at, mine: last.sender_id === uid } : null,
     meet: { me: !!iMeet, them: !!theyMeet, revealed: iMeet && theyMeet ? await meetInfo(m, uid) : null },
   };
 }
@@ -311,6 +311,7 @@ type MsgRow = { id: number; match_id: number; sender_id: number; kind: string; b
 
 async function messageOut(msg: MsgRow, players: number[]) {
   const base = { id: msg.id, uuid: msg.uuid, matchId: msg.match_id, senderId: msg.sender_id, kind: msg.kind, body: msg.body, at: msg.created_at };
+  if (msg.kind === "play") return { ...base, playId: Number(msg.body) };
   if (msg.kind !== "game") return base;
   const g = await db.prepare("SELECT * FROM games WHERE id=?").get<Parameters<typeof viewGame>[0]>(Number(msg.body));
   return { ...base, game: viewGame(g!, players) };
@@ -323,7 +324,7 @@ api.get("/matches/:id/messages", async (req, res) => {
   res.json(await Promise.all(rows.map((r) => messageOut(r, [m.a_id, m.b_id]))));
 });
 
-async function pushMessage(matchId: number, senderId: number, kind: string, body: string, players: number[], uuid: string | null = null) {
+export async function pushMessage(matchId: number, senderId: number, kind: string, body: string, players: number[], uuid: string | null = null) {
   if (uuid) {
     const existing = await db.prepare("SELECT * FROM messages WHERE uuid=?").get<MsgRow>(uuid);
     if (existing) return messageOut(existing, players); // idempotent retry from the offline outbox
