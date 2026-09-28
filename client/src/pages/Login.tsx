@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { tokenStore } from "../api";
 import { sendCode, confirmCode, loginMode } from "../lib/phoneAuth";
 import { useApp } from "../App";
@@ -9,7 +10,11 @@ export default function Login() {
   const [code, setCode] = useState("");
   const [step, setStep] = useState<"phone" | "code">("phone");
   const [devCode, setDevCode] = useState<string | undefined>();
-  const [err, setErr] = useState("");
+  const [err, setErr] = useState(() => {
+    const n = sessionStorage.getItem("yf_notice") || "";
+    sessionStorage.removeItem("yf_notice");
+    return n;
+  });
   const [busy, setBusy] = useState(false);
 
   const cleanPhone = phone.replace(/[\s-]/g, "");
@@ -83,7 +88,10 @@ export default function Login() {
       )}
       {err && <p className="error">{err}</p>}
       <div id="recaptcha" />
-      <p className="fine">18+ only. Your seat is never shown unless both of you agree to meet.</p>
+      <p className="fine">
+        18+ only. Your seat is never shown unless both of you agree to meet. By continuing you agree to our <Link to="/terms">Terms</Link> and{" "}
+        <Link to="/privacy">Privacy Policy</Link>.
+      </p>
     </div>
   );
 }

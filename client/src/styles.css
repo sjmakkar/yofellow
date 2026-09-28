@@ -321,3 +321,35 @@ textarea { resize: none; }
 
 /* cab */
 .cab .row input { min-width: 0; }
+
+/* ---------- pilot pack: legal, feedback, admin ---------- */
+.legal { max-width: 680px; margin: 0 auto; line-height: 1.55; }
+.legal h3 { margin: 18px 0 4px; font-size: 16px; }
+.legal ul { padding-left: 20px; margin: 4px 0; }
+.legal li { margin: 4px 0; }
+.legal a, .fine a, .consent a, .hint a { color: var(--brand); }
+.consent { padding: 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--card); }
+.stars { display: flex; gap: 6px; }
+.stars button { font-size: 30px; line-height: 1; background: none; border: 0; color: var(--line); cursor: pointer; padding: 2px; }
+.stars button.on { color: var(--warm); }
+.stars-sm { color: var(--warm); font-size: 13px; letter-spacing: 1px; }
+.pill.danger { background: #ffe4e6; color: var(--danger); margin-left: 6px; }
+.stack.tight { gap: 2px; }
+.dim { opacity: 0.55; }
+.pre { white-space: pre-wrap; word-break: break-word; }
+.admin blockquote { margin: 0; padding: 8px 12px; border-left: 3px solid var(--line); background: var(--bg); border-radius: 8px; white-space: pre-wrap; word-break: break-word; }
+.admin blockquote.struck { text-decoration: line-through; opacity: 0.6; }
+.admin select { padding: 6px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--ink); }
+.stat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+.stat { background: var(--card); border-radius: 12px; padding: 10px; box-shadow: var(--shadow); display: flex; flex-direction: column; }
+.stat b { font-size: 22px; }
+.stat span { font-size: 12px; color: var(--muted); }
+.stat.alert { background: var(--warm-soft); }
+.bars { display: flex; align-items: flex-end; gap: 4px; height: 140px; padding-top: 16px; }
+.bar { flex: 1; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; position: relative; min-width: 0; }
+.bar i { display: block; width: 100%; min-height: 2px; background: var(--brand-2); border-radius: 4px 4px 0 0; }
+.bar small { position: absolute; top: -2px; font-size: 10px; color: var(--muted); }
+.bar em { font-style: normal; font-size: 10px; color: var(--muted); margin-top: 2px; }
+.table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.table td { padding: 6px 4px; border-bottom: 1px solid var(--line); text-transform: capitalize; }
+.table td.num { text-align: right; font-weight: 600; }

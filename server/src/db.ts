@@ -273,6 +273,44 @@ CREATE TABLE IF NOT EXISTS cab_members (
   created_at TIMESTAMPTZ DEFAULT now(),
   PRIMARY KEY (cab_id, user_id)
 );
+-- Web push: one row per device that allowed notifications.
+CREATE TABLE IF NOT EXISTS push_subs (
+  endpoint TEXT PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  p256dh TEXT NOT NULL,
+  auth TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_push_user ON push_subs(user_id);
+CREATE TABLE IF NOT EXISTS vapid_keys (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  public_key TEXT NOT NULL,
+  private_key TEXT NOT NULL
+);
+-- Product analytics, recorded on our own server (no third party trackers).
+CREATE TABLE IF NOT EXISTS events (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER,
+  name TEXT NOT NULL,
+  props TEXT,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_events_time ON events(created_at);
+CREATE TABLE IF NOT EXISTS feedback (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  rating INTEGER,
+  message TEXT NOT NULL,
+  page TEXT,
+  status TEXT NOT NULL DEFAULT 'new',
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+-- Columns added after launch (safe to run on an existing database).
+ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin INTEGER DEFAULT 0;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS banned INTEGER DEFAULT 0;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS accepted_terms_at TIMESTAMPTZ;
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'open';
+ALTER TABLE message_reports ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'open';
 -- Dev only: keys for demo travellers so they can sign group messages.
 CREATE TABLE IF NOT EXISTS demo_keys (
   user_id INTEGER PRIMARY KEY,
@@ -301,6 +339,9 @@ export type UserRow = {
   show_me: string;
   women_only: number;
   hidden: number;
+  is_admin?: number;
+  banned?: number;
+  accepted_terms_at?: string | null;
 };
 
 export type TripRow = {
@@ -336,7 +377,9 @@ export function selfUser(u: UserRow) {
     showMe: u.show_me,
     womenOnly: !!u.women_only,
     hidden: !!u.hidden,
-    complete: !!(u.name && u.age && u.gender),
+    isAdmin: !!u.is_admin,
+    acceptedTerms: !!u.accepted_terms_at,
+    complete: !!(u.name && u.age && u.gender && u.accepted_terms_at),
   };
 }
 

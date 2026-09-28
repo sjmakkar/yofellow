@@ -6,6 +6,8 @@ import { api, me, bad, parse, getUser, myTrip, travellersFor, tripOut, sendDm, d
 import { emitToRoom, setRoomAccess } from "./realtime.js";
 import { checkGroupMessage, verifyEnvelope, newKeypair, signCert, type Envelope, type KeyCert } from "../../shared/mesh.js";
 import { demoGroupReply } from "./demo.js";
+import { limit } from "./limits.js";
+import { track } from "./events.js";
 
 export type RoomRow = { id: number; trip_key: string; kind: "train" | "coach" | "women" | "topic" | "cab"; coach: string; name: string; created_by: number | null };
 type RoomMsgRow = { id: number; uuid: string; room_id: number; sender_id: number; body: string; client_ts: number; sig: string; sender_name: string; hidden: number; created_at: string };
@@ -188,6 +190,7 @@ export async function ingestEnvelope(raw: unknown, uploaderId: number): Promise<
   const out = await roomMsgOut(row);
   emitToRoom(room.id, "room:message", out);
   if (uploaderId === sender.id) demoGroupReply(room, sender.id, ingestEnvelope).catch(console.error);
+  track(sender.id, "group_msg", { relayed: uploaderId !== sender.id });
   return { message: out, duplicate: false };
 }
 
@@ -254,7 +257,7 @@ api.get("/rooms/:id/messages", async (req, res) => {
   res.json({ room: await roomOut(room), messages: await roomMessages(u, room.id, Number(req.query.after) || 0) });
 });
 
-api.post("/room-messages/:uuid/report", async (req, res) => {
+api.post("/room-messages/:uuid/report", limit("report", 20, 24 * 3600_000), async (req, res) => {
   const u = me(req);
   const b = parse(z.object({ reason: z.string().trim().min(1).max(300) }), req.body, res);
   if (!b) return;
@@ -358,7 +361,7 @@ async function runOp(u: UserRow, raw: unknown): Promise<OpResult> {
   }
 }
 
-api.post("/sync", async (req, res) => {
+api.post("/sync", limit("sync", 120, 60_000), async (req, res) => {
   const u = me(req);
   const b = parse(z.object({ ops: z.array(z.any()).max(500) }), req.body, res);
   if (!b) return;

@@ -1,6 +1,6 @@
 // Service worker: keeps the app shell on the phone so YoFellow opens with no network.
 // API data is cached separately in IndexedDB by the app itself.
-const CACHE = "yofellow-shell-v2";
+const CACHE = "yofellow-shell-v3";
 const SHELL = ["/", "/index.html", "/manifest.webmanifest", "/icon.svg"];
 
 // Cache the shell plus the hashed JS/CSS bundles that index.html points to,
@@ -59,5 +59,41 @@ self.addEventListener("fetch", (e) => {
           return res;
         })
     )
+  );
+});
+
+// ---------- Push notifications ----------
+self.addEventListener("push", (e) => {
+  let p = { title: "YoFellow", body: "You have something new", url: "/" };
+  try {
+    p = { ...p, ...e.data.json() };
+  } catch {}
+  e.waitUntil(
+    self.registration.showNotification(p.title, {
+      body: p.body,
+      tag: p.tag,
+      renotify: !!p.tag,
+      icon: "/icon.svg",
+      badge: "/icon.svg",
+      data: { url: p.url || "/" },
+    })
+  );
+});
+
+// Tapping a notification opens the right screen, reusing an open YoFellow tab if there is one.
+self.addEventListener("notificationclick", (e) => {
+  e.notification.close();
+  const url = new URL(e.notification.data?.url || "/", self.location.origin).href;
+  e.waitUntil(
+    (async () => {
+      const wins = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      for (const w of wins) {
+        if (new URL(w.url).origin === self.location.origin) {
+          await w.focus();
+          return w.navigate ? w.navigate(url) : undefined;
+        }
+      }
+      return self.clients.openWindow(url);
+    })()
   );
 });

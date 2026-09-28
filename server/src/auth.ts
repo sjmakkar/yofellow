@@ -85,6 +85,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   const uid = verifyToken(token);
   const user = uid ? await db.prepare("SELECT * FROM users WHERE id=?").get<UserRow>(uid) : undefined;
   if (!user) return res.status(401).json({ error: "Please log in again" });
+  if (user.banned) return res.status(403).json({ error: "This account has been suspended for breaking the community rules.", banned: true });
   (req as AuthedRequest).user = user;
   next();
 }

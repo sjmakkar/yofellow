@@ -1,6 +1,9 @@
-import { useState } from "react";
-import { api, INTENT_LABEL, type Intent, type Me } from "../api";
+import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import { api, tokenStore, INTENT_LABEL, type Intent, type Me } from "../api";
 import { useApp } from "../App";
+import Feedback from "../components/Feedback";
+import { currentSubscription, disablePush, enablePush, isIos, isStandalone, pushSupported } from "../lib/push";
 
 const SUGGESTED = ["music", "movies", "books", "travel", "cricket", "football", "coding", "startups", "ai", "food", "chai", "trekking", "photography", "art", "gaming", "fitness", "anime", "debate", "dance", "guitar"];
 
@@ -18,6 +21,9 @@ export default function Profile({ onboarding = false }: { onboarding?: boolean }
     womenOnly: me?.womenOnly || false,
     hidden: me?.hidden || false,
   });
+  const needsTerms = !me?.acceptedTerms;
+  const [agree, setAgree] = useState(false);
+  const [feedback, setFeedback] = useState(false);
   const [custom, setCustom] = useState("");
   const [err, setErr] = useState("");
   const set = (k: keyof typeof f, v: any) => setF((p) => ({ ...p, [k]: v }));
@@ -29,7 +35,7 @@ export default function Profile({ onboarding = false }: { onboarding?: boolean }
     e.preventDefault();
     setErr("");
     try {
-      const updated = await api<Me>("/me", { method: "PUT", body: { ...f, age: Number(f.age) } });
+      const updated = await api<Me>("/me", { method: "PUT", body: { ...f, age: Number(f.age), ...(needsTerms ? { acceptTerms: agree } : {}) } });
       setMe(updated);
       if (!onboarding) toast("Profile saved");
     } catch (e) {
@@ -41,6 +47,21 @@ export default function Profile({ onboarding = false }: { onboarding?: boolean }
     if (!confirm("Delete your account and all your data? This cannot be undone.")) return;
     await api("/me", { method: "DELETE" });
     logout();
+  }
+
+  async function downloadData() {
+    try {
+      const res = await fetch("/api/me/export", { headers: { Authorization: `Bearer ${tokenStore.get()}` } });
+      if (!res.ok) throw new Error();
+      const url = URL.createObjectURL(await res.blob());
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "yofellow-my-data.json";
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch {
+      toast("Couldn't download right now. Try again with network.");
+    }
   }
 
   const allTags = [...new Set([...SUGGESTED, ...f.interests])];
@@ -160,10 +181,45 @@ export default function Profile({ onboarding = false }: { onboarding?: boolean }
         </label>
       </div>
 
+      {needsTerms && (
+        <label className="switch consent">
+          <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} />
+          <span>
+            <b>I'm 18 or older</b>
+            <small>
+              and I accept the <Link to="/terms">Terms</Link> and <Link to="/privacy">Privacy Policy</Link>.
+            </small>
+          </span>
+        </label>
+      )}
+
       {err && <p className="error">{err}</p>}
-      <button className="btn primary" disabled={!f.name || !f.age || !f.gender}>
+      <button className="btn primary" disabled={!f.name || !f.age || !f.gender || (needsTerms && !agree)}>
         {onboarding ? "Start travelling" : "Save"}
       </button>
+
+      {!onboarding && <Notifications />}
+
+      {!onboarding && (
+        <div className="card stack">
+          <span className="label">More</span>
+          {me?.isAdmin && (
+            <Link className="btn" to="/admin">
+              🛡️ Admin panel
+            </Link>
+          )}
+          <button type="button" className="btn" onClick={() => setFeedback(true)}>
+            💬 Send feedback
+          </button>
+          <button type="button" className="btn" onClick={downloadData}>
+            ⬇️ Download my data
+          </button>
+          <p className="hint center-text">
+            <Link to="/terms">Terms</Link> · <Link to="/privacy">Privacy</Link>
+          </p>
+        </div>
+      )}
+      {feedback && <Feedback onClose={() => setFeedback(false)} />}
 
       {!onboarding && (
         <div className="stack">
@@ -176,5 +232,70 @@ export default function Profile({ onboarding = false }: { onboarding?: boolean }
         </div>
       )}
     </form>
+  );
+}
+
+function Notifications() {
+  const { toast } = useApp();
+  const [on, setOn] = useState<boolean | null>(null);
+  const [busy, setBusy] = useState(false);
+  const supported = pushSupported();
+  const iosNeedsInstall = isIos() && !isStandalone();
+
+  useEffect(() => {
+    currentSubscription().then((s) => setOn(!!s && Notification.permission === "granted"));
+  }, []);
+
+  async function toggle() {
+    setBusy(true);
+    try {
+      if (on) {
+        await disablePush();
+        setOn(false);
+      } else {
+        await enablePush();
+        setOn(true);
+        toast("Notifications on 🔔");
+      }
+    } catch (e) {
+      toast((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function test() {
+    try {
+      const r = await api<{ sent: number }>("/push/test", { method: "POST" });
+      toast(r.sent ? "Test sent. Check your notifications." : "No device got it. Turn notifications off and on again.");
+    } catch (e) {
+      toast((e as Error).message);
+    }
+  }
+
+  return (
+    <div className="card stack">
+      <span className="label">Notifications</span>
+      {iosNeedsInstall ? (
+        <p className="hint">On iPhone, tap Share → Add to Home Screen, then open YoFellow from your home screen to turn on notifications.</p>
+      ) : !supported ? (
+        <p className="hint">This browser can't show notifications.</p>
+      ) : (
+        <>
+          <label className="switch">
+            <input type="checkbox" checked={!!on} disabled={busy || on === null} onChange={toggle} />
+            <span>
+              <b>Alert me when the app is closed</b>
+              <small>Waves, matches, new messages, game turns and cab requests.</small>
+            </span>
+          </label>
+          {on && (
+            <button type="button" className="btn small ghost" onClick={test}>
+              Send me a test
+            </button>
+          )}
+        </>
+      )}
+    </div>
   );
 }

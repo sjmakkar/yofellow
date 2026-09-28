@@ -9,6 +9,9 @@ import { api, me, bad, parse, getUser, myTrip, pushMessage } from "./routes.js";
 import { emitToUser, emitToRoom } from "./realtime.js";
 import { isDemoUser } from "./demo.js";
 import { ENGINES } from "../../shared/games/index.js";
+import { limit } from "./limits.js";
+import { track } from "./events.js";
+import { notify } from "./push.js";
 
 type Seat = { user: number | null; name: string; bot: boolean };
 type Row = {
@@ -125,6 +128,7 @@ async function applyMove(r: Row, seat: number, move: unknown): Promise<{ error: 
   });
   if (!saved) return { error: "The board changed, try again" };
   await broadcast(saved);
+  if (res.over) track(null, "game_finished", { kind: r.kind, players: JSON.parse(r.seats).length });
   if (!res.over) scheduleBots(saved.id);
   return { row: saved };
 }
@@ -168,7 +172,7 @@ const createSchema = z.object({
   players: z.number().int().min(2).max(4).optional(),
 });
 
-api.post("/play", async (req, res) => {
+api.post("/play", limit("playcreate", 20, 3600_000), async (req, res) => {
   const b = parse(createSchema, req.body, res);
   if (!b) return;
   const u = me(req);
@@ -191,6 +195,8 @@ api.post("/play", async (req, res) => {
     const started = await startGame(row!, false);
     if ("error" in started) return bad(res, started.error!);
     await pushMessage(m.id, u.id, "play", String(row!.id), [m.a_id, m.b_id]);
+    notify(other.id, { title: `🎮 ${u.name} invited you to ${e.title}`, body: "Tap to play.", url: `/play/${row!.id}`, tag: `play-${row!.id}` });
+    track(u.id, "game_started", { kind: b.kind, where: "chat" });
     return res.json(view(started.row));
   }
 
@@ -206,6 +212,7 @@ api.post("/play", async (req, res) => {
       .prepare("INSERT INTO play_sessions (kind, trip_key, seats, max_players, women_only, status, created_by) VALUES (?,?,?,?,?,?,?) RETURNING *")
       .get<Row>(b.kind, trip.trip_key, JSON.stringify(seats), maxPlayers, u.women_only ? 1 : 0, "waiting", u.id);
     await broadcast(row!);
+    track(u.id, "game_started", { kind: b.kind, where: "trip" });
     return res.json(view(row!));
   }
   bad(res, "Pick a chat or a trip");

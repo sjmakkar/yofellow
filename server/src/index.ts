@@ -10,6 +10,7 @@ import { initRealtime } from "./realtime.js";
 import "./rooms.js";
 import "./play.js";
 import "./cab.js";
+import "./admin.js";
 import { startRadioHub } from "./radio.js";
 import { initDb, usingExternalPostgres } from "./db.js";
 

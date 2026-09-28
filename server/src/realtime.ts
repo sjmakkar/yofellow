@@ -4,6 +4,12 @@ import { verifyToken } from "./auth.js";
 import { db } from "./db.js";
 
 let io: Server | null = null;
+const online = new Map<number, number>(); // user id -> open sockets
+
+/** Is this user using the app right now (so a push notification is not needed)? */
+export function isOnline(userId: number) {
+  return (online.get(userId) ?? 0) > 0;
+}
 
 export function emitToUser(userId: number, event: string, data: unknown) {
   io?.to(`user:${userId}`).emit(event, data);
@@ -27,9 +33,11 @@ export async function matchPlayers(matchId: number, userId: number) {
 export function initRealtime(server: HttpServer) {
   io = new Server(server, { cors: { origin: true } });
 
-  io.use((socket, next) => {
+  io.use(async (socket, next) => {
     const uid = verifyToken(String(socket.handshake.auth?.token || ""));
     if (!uid) return next(new Error("unauthorized"));
+    const u = await db.prepare("SELECT banned FROM users WHERE id=?").get<{ banned: number }>(uid).catch(() => undefined);
+    if (!u || u.banned) return next(new Error("unauthorized"));
     socket.data.uid = uid;
     next();
   });
@@ -37,6 +45,12 @@ export function initRealtime(server: HttpServer) {
   io.on("connection", (socket) => {
     const uid = socket.data.uid as number;
     socket.join(`user:${uid}`);
+    online.set(uid, (online.get(uid) ?? 0) + 1);
+    socket.on("disconnect", () => {
+      const n = (online.get(uid) ?? 1) - 1;
+      if (n <= 0) online.delete(uid);
+      else online.set(uid, n);
+    });
 
     socket.on("room:join", async ({ roomId }: { roomId: number }, ack?: (ok: boolean) => void) => {
       const ok = await roomAccess(uid, Number(roomId)).catch(() => false);

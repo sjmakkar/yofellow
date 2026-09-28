@@ -6,6 +6,9 @@ import { db, isBlocked, publicUser, type UserRow } from "./db.js";
 import { api, me, bad, parse, getUser, myTrip } from "./routes.js";
 import { emitToUser } from "./realtime.js";
 import { roomOut, type RoomRow } from "./rooms.js";
+import { limit } from "./limits.js";
+import { track } from "./events.js";
+import { notify } from "./push.js";
 
 type Cab = {
   id: number;
@@ -109,7 +112,7 @@ const postSchema = z.object({
   note: z.string().trim().max(200).optional().default(""),
 });
 
-api.post("/trips/:id/cabs", async (req, res) => {
+api.post("/trips/:id/cabs", limit("cabpost", 5, 24 * 3600_000), async (req, res) => {
   const u = me(req);
   const trip = await myTrip(u.id, Number(req.params.id));
   if (!trip) return bad(res, "Trip not found", 404);
@@ -126,10 +129,11 @@ api.post("/trips/:id/cabs", async (req, res) => {
       "INSERT INTO cab_shares (trip_key, owner_id, drop_area, leave_when, seats, women_only, note, room_id) VALUES (?,?,?,?,?,?,?,?) RETURNING *"
     )
     .get<Cab>(trip.trip_key, u.id, b.dropArea, b.leaveWhen, b.seats, b.womenOnly ? 1 : 0, b.note, room!.id);
+  track(u.id, "cab_posted");
   res.json(await cabView(cab!, u));
 });
 
-api.post("/cabs/:id/request", async (req, res) => {
+api.post("/cabs/:id/request", limit("cabreq", 20, 3600_000), async (req, res) => {
   const u = me(req);
   const c = await loadCab(Number(req.params.id));
   if (!c || c.status !== "open" || !(await visible(c, u))) return bad(res, "Cab not found", 404);
@@ -138,6 +142,9 @@ api.post("/cabs/:id/request", async (req, res) => {
   if (!onTrip) return bad(res, "You are not on this journey", 403);
   await db.prepare("INSERT INTO cab_members (cab_id, user_id, status) VALUES (?,?,'pending') ON CONFLICT (cab_id, user_id) DO NOTHING").run(c.id, u.id);
   emitToUser(c.owner_id, "cab:request", { cabId: c.id, from: publicUser(u), tripKey: c.trip_key });
+  const ownerTrip = await db.prepare("SELECT id FROM trips WHERE user_id=? AND trip_key=?").get<{ id: number }>(c.owner_id, c.trip_key);
+  notify(c.owner_id, { title: `🚕 ${u.name} wants to share your cab`, body: `To ${c.drop_area}. Open the Cab tab to accept.`, url: ownerTrip ? `/trips/${ownerTrip.id}` : "/", tag: `cab-${c.id}` });
+  track(u.id, "cab_requested");
   res.json(await cabView(c, u));
 });
 
@@ -153,6 +160,10 @@ api.post("/cabs/:id/respond", async (req, res) => {
   }
   await db.prepare("UPDATE cab_members SET status=? WHERE cab_id=? AND user_id=?").run(b.accept ? "accepted" : "declined", c.id, b.userId);
   emitToUser(b.userId, "cab:update", { cabId: c.id, tripKey: c.trip_key, accepted: b.accept });
+  if (b.accept) {
+    notify(b.userId, { title: "🚕 You're in the cab!", body: `${u.name} accepted you for the ride to ${c.drop_area}.`, url: `/groups/${c.room_id}`, tag: `cab-${c.id}` });
+    track(u.id, "cab_accepted");
+  }
   await notifyGroup(c, "cab:update");
   res.json(await cabView(c, u));
 });

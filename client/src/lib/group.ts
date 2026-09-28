@@ -40,7 +40,7 @@ export async function save(m: RoomMsg, status: RoomMsg["status"], extra: Partial
 
 export async function loadRoom(roomId: number) {
   const list = await roomMsgsFor<RoomMsg>(roomId);
-  return list.sort((a, b) => a.ts - b.ts);
+  return list.filter((m) => !m.hidden).sort((a, b) => a.ts - b.ts);
 }
 
 export async function fetchRoom(roomId: number) {
@@ -79,6 +79,14 @@ export function wireGroupSync(myId: () => number | undefined) {
     s.on("room:message", async (m: RoomMsg) => {
       await save(m, "sent");
       if (publicRooms.has(m.room)) meshNode()?.publish(envOf(m));
+    });
+    // A moderator hid (or restored) a message: keep the record so the mesh can't bring it back.
+    s.on("room:hidden", async (d: { id: string; hidden: boolean }) => {
+      const prev = await roomMsgGet<RoomMsg>(d.id);
+      if (!prev) return;
+      const next: RoomMsg = { ...prev, hidden: d.hidden };
+      await roomMsgPut(next);
+      changed(prev.room);
     });
   }
   if (wired) return;

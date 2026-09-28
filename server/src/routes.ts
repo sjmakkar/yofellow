@@ -6,6 +6,12 @@ import { isVisible, vibeScore } from "./vibe.js";
 import { makePrompt, viewGame, isComplete, type GameType } from "./games.js";
 import { emitToUser, matchPlayers } from "./realtime.js";
 import { isDemoUser, demoReplyText, demoGameAnswer } from "./demo.js";
+import { limit } from "./limits.js";
+import { track } from "./events.js";
+import { notify, saveSubscription, removeSubscription, subSchema, vapidKeys } from "./push.js";
+
+const MIN = 60_000;
+const ADMIN_PHONES = (process.env.ADMIN_PHONES || "").split(",").map((p) => p.trim().replace(/^\+91/, "")).filter(Boolean);
 
 export const api = Router();
 
@@ -32,8 +38,12 @@ function tripFromKey(key: string) {
 const phoneSchema = z.string().regex(/^\+?\d{10,13}$/, "enter a valid phone number");
 
 /** Public: tells the app which login to use (Firebase SMS in production, dev code locally). */
-api.get("/config", (_req, res) => {
-  res.json({ firebase: firebaseConfig() });
+api.get("/config", async (_req, res) => {
+  res.json({
+    firebase: firebaseConfig(),
+    vapidPublicKey: (await vapidKeys()).public_key,
+    supportEmail: process.env.SUPPORT_EMAIL || null,
+  });
 });
 
 async function loginByPhone(phone: string) {
@@ -41,11 +51,18 @@ async function loginByPhone(phone: string) {
   if (!user) {
     const r = await db.prepare("INSERT INTO users (phone) VALUES (?) ON CONFLICT (phone) DO NOTHING RETURNING id").get<{ id: number }>(phone);
     user = r ? await getUser(r.id) : await db.prepare("SELECT * FROM users WHERE phone=?").get<UserRow>(phone);
+    if (r) track(r.id, "signup");
   }
+  if (user!.banned) return { error: "This account has been suspended for breaking the community rules." };
+  if (ADMIN_PHONES.includes(phone) && !user!.is_admin) {
+    await db.prepare("UPDATE users SET is_admin=1 WHERE id=?").run(user!.id);
+    user = await getUser(user!.id);
+  }
+  track(user!.id, "login");
   return { token: signToken(user!.id), user: selfUser(user!) };
 }
 
-api.post("/auth/request-otp", async (req, res) => {
+api.post("/auth/request-otp", limit("otp", 5, 10 * MIN, "ip"), async (req, res) => {
   if (firebaseConfig()) return bad(res, "Use phone sign in from the app");
   if (!DEV_OTP) return bad(res, "Login is not set up yet: add the FIREBASE_* settings on the server.", 503);
   const body = parse(z.object({ phone: phoneSchema }), req.body, res);
@@ -54,21 +71,25 @@ api.post("/auth/request-otp", async (req, res) => {
   res.json({ ok: true, devCode });
 });
 
-api.post("/auth/verify", async (req, res) => {
+api.post("/auth/verify", limit("verify", 10, 10 * MIN, "ip"), async (req, res) => {
   if (firebaseConfig()) return bad(res, "Use phone sign in from the app");
   const body = parse(z.object({ phone: phoneSchema, code: z.string().length(6) }), req.body, res);
   if (!body) return;
   if (!(await checkOtp(body.phone, body.code))) return bad(res, "Wrong or expired code", 401);
-  res.json(await loginByPhone(body.phone));
+  const r = await loginByPhone(body.phone);
+  if ("error" in r) return bad(res, r.error!, 403);
+  res.json(r);
 });
 
 /** Firebase phone login: the app sends the Firebase ID token, we check it with Google's keys. */
-api.post("/auth/firebase", async (req, res) => {
+api.post("/auth/firebase", limit("firebase", 60, 10 * MIN, "ip"), async (req, res) => {
   const body = parse(z.object({ idToken: z.string().min(20) }), req.body, res);
   if (!body) return;
   const phone = await verifyFirebaseToken(body.idToken);
   if (!phone) return bad(res, "Phone verification failed, please try again", 401);
-  res.json(await loginByPhone(phone.replace(/^\+91/, "")));
+  const r = await loginByPhone(phone.replace(/^\+91/, ""));
+  if ("error" in r) return bad(res, r.error!, 403);
+  res.json(r);
 });
 
 api.use(requireAuth);
@@ -89,16 +110,67 @@ const profileSchema = z.object({
   showMe: z.enum(["everyone", "women", "men"]).default("everyone"),
   womenOnly: z.boolean().default(false),
   hidden: z.boolean().default(false),
+  acceptTerms: z.boolean().optional(),
 });
 
 api.put("/me", async (req, res) => {
   const b = parse(profileSchema, req.body, res);
   if (!b) return;
   if (b.womenOnly && b.gender !== "woman") return bad(res, "Women only mode is for women");
+  if (!me(req).accepted_terms_at && !b.acceptTerms) return bad(res, "Please confirm you are 18+ and accept the Terms and Privacy Policy");
+  if (b.acceptTerms && !me(req).accepted_terms_at) await db.prepare("UPDATE users SET accepted_terms_at=now() WHERE id=?").run(me(req).id);
   await db
     .prepare(`UPDATE users SET name=?, age=?, gender=?, city=?, bio=?, interests=?, intent=?, show_me=?, women_only=?, hidden=? WHERE id=?`)
     .run(b.name, b.age, b.gender, b.city, b.bio, JSON.stringify(b.interests), b.intent, b.showMe, b.womenOnly ? 1 : 0, b.hidden ? 1 : 0, me(req).id);
   res.json(selfUser((await getUser(me(req).id))!));
+});
+
+/** Everything we store about you, as a download (your right under India's DPDP Act). */
+api.get("/me/export", async (req, res) => {
+  const id = me(req).id;
+  const q = (sql: string, ...a: (number | string)[]) => db.prepare(sql).all(...a);
+  const data = {
+    exportedAt: new Date().toISOString(),
+    profile: selfUser(me(req)),
+    trips: await q("SELECT mode, number, date, coach, intent, from_place, to_place, created_at FROM trips WHERE user_id=?", id),
+    wavesSent: await q("SELECT to_id, trip_key, created_at FROM waves WHERE from_id=?", id),
+    privateMessages: await q("SELECT match_id, kind, body, created_at FROM messages WHERE sender_id=? AND kind='text'", id),
+    groupMessages: await q("SELECT room_id, body, created_at FROM room_messages WHERE sender_id=?", id),
+    cabShares: await q("SELECT drop_area, leave_when, seats, fare, vehicle, created_at FROM cab_shares WHERE owner_id=?", id),
+    signalSamples: await q("SELECT route, date, lat, lng, online, ts FROM signal_samples WHERE user_id=?", id),
+    reportsYouMade: await q("SELECT reported_id, reason, created_at FROM reports WHERE reporter_id=?", id),
+    blocked: await q("SELECT blocked_id FROM blocks WHERE blocker_id=?", id),
+    feedback: await q("SELECT rating, message, created_at FROM feedback WHERE user_id=?", id),
+  };
+  res.setHeader("Content-Disposition", `attachment; filename="yofellow-my-data.json"`);
+  res.json(data);
+});
+
+// ---------- Push notifications ----------
+api.post("/push/subscribe", async (req, res) => {
+  const b = parse(subSchema, req.body, res);
+  if (!b) return;
+  await saveSubscription(me(req).id, b);
+  res.json({ ok: true });
+});
+api.post("/push/unsubscribe", async (req, res) => {
+  const b = parse(z.object({ endpoint: z.string().max(1000) }), req.body, res);
+  if (!b) return;
+  await removeSubscription(me(req).id, b.endpoint);
+  res.json({ ok: true });
+});
+api.post("/push/test", limit("pushtest", 5, 10 * MIN), async (req, res) => {
+  const sent = await notify(me(req).id, { title: "YoFellow", body: "Notifications are working 🎉", url: "/" }, { evenIfOnline: true });
+  res.json({ sent });
+});
+
+// ---------- Feedback ----------
+api.post("/feedback", limit("feedback", 10, 24 * 60 * MIN), async (req, res) => {
+  const b = parse(z.object({ message: z.string().trim().min(2).max(2000), rating: z.number().int().min(1).max(5).optional(), page: z.string().max(100).optional() }), req.body, res);
+  if (!b) return;
+  await db.prepare("INSERT INTO feedback (user_id, rating, message, page) VALUES (?,?,?,?)").run(me(req).id, b.rating ?? null, b.message, b.page ?? null);
+  track(me(req).id, "feedback", { rating: b.rating });
+  res.json({ ok: true });
 });
 
 api.delete("/me", async (req, res) => {
@@ -160,6 +232,7 @@ api.post("/trips", async (req, res) => {
   const trip = await db
     .prepare("INSERT INTO trips (user_id, mode, number, date, coach, intent, from_place, to_place, trip_key) VALUES (?,?,?,?,?,?,?,?,?) RETURNING *")
     .get<TripRow>(u.id, b.mode, b.number.toUpperCase(), b.date, b.coach.toUpperCase(), b.intent || u.intent, b.from, b.to, key);
+  track(u.id, "trip_added", { mode: b.mode });
   res.json(await tripOut(trip!));
 });
 
@@ -231,8 +304,10 @@ export async function doWave(u: UserRow, toId: number, tripId: number): Promise<
     await db.prepare("INSERT INTO waves (from_id, to_id, trip_key) VALUES (?,?,?) ON CONFLICT DO NOTHING").run(them.id, u.id, trip.trip_key);
   }
   const mutual = await db.prepare("SELECT 1 FROM waves WHERE from_id=? AND to_id=? AND trip_key=?").get(them.id, u.id, trip.trip_key);
+  track(u.id, "wave");
   if (!mutual) {
     emitToUser(them.id, "wave", { from: publicUser(u), tripId: theirTrip.id });
+    notify(them.id, { title: `👋 ${u.name} waved at you`, body: `On your ${trip.mode} ${trip.number}. Wave back to start chatting.`, url: `/trips/${theirTrip.id}`, tag: `wave-${u.id}` });
     return { matched: false };
   }
   let match = await findMatch(u.id, them.id, trip.trip_key);
@@ -244,6 +319,8 @@ export async function doWave(u: UserRow, toId: number, tripId: number): Promise<
     await db.prepare("INSERT INTO messages (match_id, sender_id, kind, body) VALUES (?,?,?,?)").run(match!.id, u.id, "system", "You matched! Say hi or start a game to break the ice.");
   }
   emitToUser(them.id, "match", { matchId: match!.id, with: publicUser(u) });
+  notify(them.id, { title: `🎉 It's a match with ${u.name}!`, body: "Say hi or start a game.", url: `/chats/${match!.id}`, tag: `match-${match!.id}` });
+  track(u.id, "match");
   return { matched: true, matchId: match!.id };
 }
 
@@ -344,6 +421,8 @@ export async function sendDm(u: UserRow, matchId: number, body: string, uuid: st
   if (!text) return { error: "Message is empty" };
   const out = await pushMessage(m.id, u.id, "text", text, [m.a_id, m.b_id], uuid);
   const other = await getUser(m.a_id === u.id ? m.b_id : m.a_id);
+  if (other) notify(other.id, { title: u.name || "New message", body: text.slice(0, 120), url: `/chats/${m.id}`, tag: `chat-${m.id}` });
+  track(u.id, "dm_sent");
   if (other && isDemoUser(other.phone)) {
     setTimeout(() => emitToUser(u.id, "typing", { matchId: m.id, userId: other.id }), 600);
     setTimeout(() => pushMessage(m.id, other.id, "text", demoReplyText(), [m.a_id, m.b_id]).catch(console.error), 2000);
@@ -351,7 +430,7 @@ export async function sendDm(u: UserRow, matchId: number, body: string, uuid: st
   return { message: out };
 }
 
-api.post("/matches/:id/messages", async (req, res) => {
+api.post("/matches/:id/messages", limit("dm", 30, MIN), async (req, res) => {
   const b = parse(z.object({ body: z.string().trim().min(1).max(1000), uuid: z.string().uuid().optional() }), req.body, res);
   if (!b) return;
   const r = await sendDm(me(req), Number(req.params.id), b.body, b.uuid ?? null);
@@ -466,12 +545,13 @@ api.post("/users/:id/block", async (req, res) => {
   res.json({ ok: true });
 });
 
-api.post("/users/:id/report", async (req, res) => {
+api.post("/users/:id/report", limit("report", 20, 24 * 60 * MIN), async (req, res) => {
   const uid = me(req).id;
   const other = Number(req.params.id);
   const b = parse(z.object({ reason: z.string().trim().min(1).max(500) }), req.body, res);
   if (!b) return;
   await db.prepare("INSERT INTO reports (reporter_id, reported_id, reason) VALUES (?,?,?)").run(uid, other, b.reason);
+  track(uid, "report");
   const distinct = await db.prepare("SELECT COUNT(DISTINCT reporter_id) c FROM reports WHERE reported_id=?").get<{ c: number }>(other);
   if ((distinct?.c ?? 0) >= 3) await db.prepare("UPDATE users SET hidden=1 WHERE id=?").run(other); // auto hide pending review
   res.json({ ok: true });

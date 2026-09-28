@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, useCallback } from "react";
-import { Routes, Route, Navigate, NavLink, useNavigate } from "react-router-dom";
+import { Routes, Route, Navigate, NavLink, useNavigate, useLocation } from "react-router-dom";
 import { api, tokenStore, type Me, type PublicUser } from "./api";
 import { getSocket, closeSocket } from "./socket";
 import Login from "./pages/Login";
@@ -13,6 +13,9 @@ import Games from "./pages/Games";
 import Play from "./pages/Play";
 import Solo from "./pages/Solo";
 import CabGroup from "./pages/CabGroup";
+import Admin from "./pages/Admin";
+import { Privacy, Terms } from "./pages/Legal";
+import { refreshPush } from "./lib/push";
 import { startOutbox } from "./lib/outbox";
 import { registerDeviceKey } from "./lib/keys";
 import { wireGroupSync } from "./lib/group";
@@ -33,6 +36,8 @@ export default function App() {
   const [loading, setLoading] = useState(!!tokenStore.get());
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const nav = useNavigate();
+  const loc = useLocation();
+  const legalPage = loc.pathname === "/privacy" ? <Privacy /> : loc.pathname === "/terms" ? <Terms /> : null;
 
   const toast = useCallback((msg: string) => {
     setToastMsg(msg);
@@ -63,6 +68,7 @@ export default function App() {
     startOutbox();
     registerDeviceKey();
     wireGroupSync(() => me.id);
+    refreshPush();
   }, [me?.id]);
 
   // Global realtime notifications
@@ -101,8 +107,10 @@ export default function App() {
   return (
     <AppCtx.Provider value={{ me, setMe, logout, toast }}>
       <div className="shell">
-        {me && <NetBadge />}
-        {!me ? (
+        {me && !legalPage && <NetBadge />}
+        {legalPage ? (
+          <main className="content">{legalPage}</main>
+        ) : !me ? (
           <Login />
         ) : !me.complete ? (
           <Profile onboarding />
@@ -119,6 +127,7 @@ export default function App() {
                 <Route path="/play/:id" element={<Play />} />
                 <Route path="/solo/:kind" element={<Solo />} />
                 <Route path="/groups/:id" element={<CabGroup />} />
+                <Route path="/admin" element={<Admin />} />
                 <Route path="*" element={<Navigate to="/" />} />
               </Routes>
             </main>

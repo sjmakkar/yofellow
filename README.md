@@ -16,6 +16,13 @@ Meet people on the same train, flight, bus or metro. Chat in the journey's group
 - Group rooms block phone numbers and links, slow mode (1 message per second), mute, report (3 reports hide a message), block
 - Coach and women rooms are never carried by other phones over the mesh
 
+**Pilot ready**
+- **Push notifications** (Web Push, no Firebase needed): waves, matches, new private messages, game invites and cab requests reach people when the app is closed. Turn on under Me → Notifications. On iPhone it works only after Add to Home Screen (iOS 16.4+).
+- **Admin panel** (`/admin`, for phones in `ADMIN_PHONES`): daily active people, event counts, "journeys with company" (the cold start number), reports queue with hide / dismiss / ban, user search, feedback inbox. Phone numbers are masked.
+- **Terms, Privacy, 18+ consent**: `/terms` and `/privacy` open without login; new and existing users tick "I'm 18 or older and accept…" once. Me → Download my data gives a JSON export (DPDP Act right of access); Delete account erases everything. The legal text is a starter template, have a lawyer review it before a public launch.
+- **Rate limits** on login, messages, waves, reports, cab posts and feedback (friendly "please wait" message). Banned accounts are logged out everywhere and can't log back in.
+- **Analytics + feedback**: simple first party events (no ad trackers) and a Send feedback button with a star rating.
+
 **Works with bad or no network (3 layers)**
 1. **Offline first app**: service worker caches the app, IndexedDB caches data, each trip is saved for offline ("Offline ready"), and every action (group and private messages, game answers, waves, signal data) goes into an outbox that flushes in one `/sync` request when signal returns. Retries never duplicate (every message has an id).
 2. **Mesh relay**: group messages are signed (Ed25519) envelopes that phones pass to nearby phones, drop duplicates and forward up to 12 hops. When any phone gets signal, it uploads what it carries, and the server checks every signature, so one phone at a station can sync a whole coach. The server also signs a certificate for each device key, so phones can verify people they never saw online.
@@ -54,7 +61,7 @@ Browsers cannot use Bluetooth mesh. In dev, `server/src/radio.ts` stands in for 
 
 1. **Neon** (neon.tech): create a project (region Singapore or Mumbai) and copy the connection string (`postgresql://...?sslmode=require`). Tables are created automatically on first start.
 2. **Firebase** (console.firebase.google.com): create a project, enable **Authentication → Sign-in method → Phone**, and register a **Web app** to get `apiKey`, `authDomain`, `projectId`, `appId`. Optional: add test numbers under Phone → Phone numbers for testing.
-3. **Render** (render.com): **New → Blueprint**, pick this GitHub repo. `render.yaml` sets everything up and asks for `DATABASE_URL` and the four `FIREBASE_*` values. `JWT_SECRET` is generated for you.
+3. **Render** (render.com): **New → Blueprint**, pick this GitHub repo. `render.yaml` sets everything up and asks for `DATABASE_URL` and the four `FIREBASE_*` values. `JWT_SECRET` is generated for you. Also set `ADMIN_PHONES` (your number, 10 digits, comma separated for more) and `SUPPORT_EMAIL` (shown in Privacy/Terms and used as the push contact).
 4. After the first deploy, copy your Render address (like `yofellow.onrender.com`) into **Firebase → Authentication → Settings → Authorized domains**, or SMS login will be blocked.
 5. Open the Render URL on your phone and use **Add to Home screen** to install it like an app.
 
@@ -62,6 +69,7 @@ Notes:
 - Render's free plan sleeps after 15 minutes without visits; the next visit takes about a minute to wake up. The $7/month plan stays awake.
 - In production the dev login (123456), demo travellers and the radio hub are all switched off.
 - Firebase gives a limited number of free SMS; check current pricing before inviting many people.
+- Push keys (VAPID) are generated on first start and saved in the database, so nothing to configure. Rate limits live in memory, which is fine for one Render instance.
 
 ## Code map
 

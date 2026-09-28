@@ -20,6 +20,8 @@ export type Me = PublicUser & {
   womenOnly: boolean;
   hidden: boolean;
   complete: boolean;
+  isAdmin?: boolean;
+  acceptedTerms?: boolean;
 };
 export type Trip = {
   id: number;
@@ -115,8 +117,9 @@ export async function api<T = any>(path: string, opts: { method?: string; body?:
   }
   net.markApi(true);
   const data = await res.json().catch(() => ({}));
-  if (res.status === 401 && token) {
+  if ((res.status === 401 || (res.status === 403 && data.banned)) && token) {
     tokenStore.set(null);
+    if (data.banned) sessionStorage.setItem("yf_notice", data.error);
     location.href = "/";
   }
   if (!res.ok) throw new Error(data.error || "Something went wrong");
@@ -170,4 +173,5 @@ export type RoomMsg = {
   serverId?: number;
   status?: "sent" | "pending" | "mesh" | "failed";
   error?: string;
+  hidden?: boolean;
 };
