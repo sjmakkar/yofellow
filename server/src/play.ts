@@ -73,6 +73,24 @@ async function save(r: Row, patch: Partial<Row>) {
   return res ?? null;
 }
 
+/** Push "your move" / "game over" to people who aren't looking at the board. */
+async function notifyTurn(r: Row, prevTurn: number | null) {
+  const e = ENGINES[r.kind];
+  const seats = JSON.parse(r.seats) as Seat[];
+  const url = `/play/${r.id}`;
+  if (r.status === "done") {
+    for (const s of seats)
+      if (s.user && !(await isBotSeat(s))) notify(s.user, { title: `🏁 ${e.title} finished`, body: r.result_text || "Game over", url, tag: `play-${r.id}` });
+    return;
+  }
+  const turn = e.turn(JSON.parse(r.state!));
+  if (turn < 0 || turn === prevTurn) return;
+  const s = seats[turn];
+  if (!s?.user || (await isBotSeat(s))) return;
+  const others = seats.filter((x, i) => i !== turn).map((x) => x.name).join(", ");
+  notify(s.user, { title: `🎮 Your move in ${e.title}`, body: `Playing with ${others}.`, url, tag: `play-${r.id}` });
+}
+
 async function broadcast(r: Row) {
   const v = view(r);
   for (const s of v.seats) if (s.user && !s.bot) emitToUser(s.user, "play:update", v);
@@ -109,6 +127,7 @@ async function startGame(r: Row, fillBots: boolean) {
   const saved = await save(r, { seats: JSON.stringify(seats), state: JSON.stringify(state), status: "active" });
   if (!saved) return { error: "Someone changed the table, try again" };
   await broadcast(saved);
+  notifyTurn(saved, null).catch(console.error);
   scheduleBots(saved.id);
   return { row: saved };
 }
@@ -128,6 +147,7 @@ async function applyMove(r: Row, seat: number, move: unknown): Promise<{ error: 
   });
   if (!saved) return { error: "The board changed, try again" };
   await broadcast(saved);
+  notifyTurn(saved, seat).catch(console.error);
   if (res.over) track(null, "game_finished", { kind: r.kind, players: JSON.parse(r.seats).length });
   if (!res.over) scheduleBots(saved.id);
   return { row: saved };

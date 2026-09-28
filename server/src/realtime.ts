@@ -4,12 +4,23 @@ import { verifyToken } from "./auth.js";
 import { db } from "./db.js";
 
 let io: Server | null = null;
-const online = new Map<number, number>(); // user id -> open sockets
+// user id -> socket id -> what that tab/phone is showing. A connected socket alone
+// doesn't mean the person is looking: phones keep the app alive in the background.
+type Presence = { visible: boolean; path: string };
+const online = new Map<number, Map<string, Presence>>();
 
-/** Is this user using the app right now (so a push notification is not needed)? */
+/** Has the app open on some device (maybe in the background). */
 export function isOnline(userId: number) {
-  return (online.get(userId) ?? 0) > 0;
+  return (online.get(userId)?.size ?? 0) > 0;
 }
+
+/** Is the app on screen right now? With a path: on screen AND showing that page. */
+export function isWatching(userId: number, path?: string) {
+  for (const p of online.get(userId)?.values() ?? []) if (p.visible && (!path || p.path === path)) return true;
+  return false;
+}
+
+const cleanPresence = (d: any): Presence => ({ visible: d?.visible === true, path: typeof d?.path === "string" ? d.path.slice(0, 200) : "" });
 
 export function emitToUser(userId: number, event: string, data: unknown) {
   io?.to(`user:${userId}`).emit(event, data);
@@ -45,11 +56,14 @@ export function initRealtime(server: HttpServer) {
   io.on("connection", (socket) => {
     const uid = socket.data.uid as number;
     socket.join(`user:${uid}`);
-    online.set(uid, (online.get(uid) ?? 0) + 1);
+    if (!online.has(uid)) online.set(uid, new Map());
+    // Old clients don't report presence: treat them as not watching, so pushes still go out.
+    online.get(uid)!.set(socket.id, cleanPresence(socket.handshake.auth?.presence));
+    socket.on("presence", (d: unknown) => online.get(uid)?.set(socket.id, cleanPresence(d)));
     socket.on("disconnect", () => {
-      const n = (online.get(uid) ?? 1) - 1;
-      if (n <= 0) online.delete(uid);
-      else online.set(uid, n);
+      const m = online.get(uid);
+      m?.delete(socket.id);
+      if (m && !m.size) online.delete(uid);
     });
 
     socket.on("room:join", async ({ roomId }: { roomId: number }, ack?: (ok: boolean) => void) => {

@@ -4,7 +4,7 @@
 import webpush from "web-push";
 import { z } from "zod";
 import { db } from "./db.js";
-import { isOnline } from "./realtime.js";
+import { isWatching } from "./realtime.js";
 
 let keys: { public_key: string; private_key: string } | null = null;
 
@@ -41,12 +41,13 @@ export async function removeSubscription(userId: number, endpoint: string) {
 export type PushPayload = { title: string; body: string; url: string; tag?: string };
 
 /**
- * Notify a user on all their devices. By default skipped when they have the app
- * open right now (they already see it live).
+ * Notify a user on all their devices. Skipped only when they are looking at that
+ * exact screen right now (e.g. the open chat). `ifAppHidden`: also skip when the app
+ * is on screen at all, for events the app already shows as an in-app toast.
  */
-export async function notify(userId: number, p: PushPayload, opts: { evenIfOnline?: boolean } = {}) {
+export async function notify(userId: number, p: PushPayload, opts: { evenIfOnline?: boolean; ifAppHidden?: boolean } = {}) {
   try {
-    if (!opts.evenIfOnline && isOnline(userId)) return 0;
+    if (!opts.evenIfOnline && isWatching(userId, opts.ifAppHidden ? undefined : p.url)) return 0;
     await vapidKeys();
     const subs = await db.prepare("SELECT endpoint, p256dh, auth FROM push_subs WHERE user_id=?").all<{ endpoint: string; p256dh: string; auth: string }>(userId);
     let sent = 0;

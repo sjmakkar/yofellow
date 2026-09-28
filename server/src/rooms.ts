@@ -8,6 +8,7 @@ import { checkGroupMessage, verifyEnvelope, newKeypair, signCert, type Envelope,
 import { demoGroupReply } from "./demo.js";
 import { limit } from "./limits.js";
 import { track } from "./events.js";
+import { notify } from "./push.js";
 
 export type RoomRow = { id: number; trip_key: string; kind: "train" | "coach" | "women" | "topic" | "cab"; coach: string; name: string; created_by: number | null };
 type RoomMsgRow = { id: number; uuid: string; room_id: number; sender_id: number; body: string; client_ts: number; sig: string; sender_name: string; hidden: number; created_at: string };
@@ -191,7 +192,22 @@ export async function ingestEnvelope(raw: unknown, uploaderId: number): Promise<
   emitToRoom(room.id, "room:message", out);
   if (uploaderId === sender.id) demoGroupReply(room, sender.id, ingestEnvelope).catch(console.error);
   track(sender.id, "group_msg", { relayed: uploaderId !== sender.id });
+  if (room.kind === "cab") notifyCabGroup(room, sender.id, e.name, e.body).catch(console.error);
   return { message: out, duplicate: false };
+}
+
+/** Cab groups are small and private, so every message is worth a push (big train rooms would be spam). */
+async function notifyCabGroup(room: RoomRow, senderId: number, name: string, body: string) {
+  const ids = await db
+    .prepare(
+      `SELECT c.owner_id AS id FROM cab_shares c WHERE c.room_id=?
+       UNION SELECT m.user_id FROM cab_members m JOIN cab_shares c ON c.id=m.cab_id WHERE c.room_id=? AND m.status='accepted'`
+    )
+    .all<{ id: number }>(room.id, room.id);
+  for (const { id } of ids) {
+    if (id === senderId || (await isBlocked(id, senderId))) continue;
+    notify(id, { title: `🚕 ${name} · ${room.name}`, body: body.slice(0, 120), url: `/groups/${room.id}`, tag: `room-${room.id}` });
+  }
 }
 
 // ---------- signal map ----------

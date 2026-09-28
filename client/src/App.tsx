@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState, useCallback } from "react";
 import { Routes, Route, Navigate, NavLink, useNavigate, useLocation } from "react-router-dom";
 import { api, tokenStore, type Me, type PublicUser } from "./api";
-import { getSocket, closeSocket } from "./socket";
+import { getSocket, closeSocket, reportPresence } from "./socket";
 import Login from "./pages/Login";
 import Profile from "./pages/Profile";
 import Trips from "./pages/Trips";
@@ -56,6 +56,11 @@ export default function App() {
       })
       .finally(() => setLoading(false));
   }, []);
+
+  // Every screen change: tell the server what's on screen (decides whether to push).
+  useEffect(() => {
+    reportPresence();
+  }, [loc.pathname]);
 
   // Keep the profile cached so the app can start with no network.
   useEffect(() => {

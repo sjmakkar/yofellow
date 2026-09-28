@@ -307,7 +307,7 @@ export async function doWave(u: UserRow, toId: number, tripId: number): Promise<
   track(u.id, "wave");
   if (!mutual) {
     emitToUser(them.id, "wave", { from: publicUser(u), tripId: theirTrip.id });
-    notify(them.id, { title: `👋 ${u.name} waved at you`, body: `On your ${trip.mode} ${trip.number}. Wave back to start chatting.`, url: `/trips/${theirTrip.id}`, tag: `wave-${u.id}` });
+    notify(them.id, { title: `👋 ${u.name} waved at you`, body: `On your ${trip.mode} ${trip.number}. Wave back to start chatting.`, url: `/trips/${theirTrip.id}`, tag: `wave-${u.id}` }, { ifAppHidden: true });
     return { matched: false };
   }
   let match = await findMatch(u.id, them.id, trip.trip_key);
@@ -319,7 +319,7 @@ export async function doWave(u: UserRow, toId: number, tripId: number): Promise<
     await db.prepare("INSERT INTO messages (match_id, sender_id, kind, body) VALUES (?,?,?,?)").run(match!.id, u.id, "system", "You matched! Say hi or start a game to break the ice.");
   }
   emitToUser(them.id, "match", { matchId: match!.id, with: publicUser(u) });
-  notify(them.id, { title: `🎉 It's a match with ${u.name}!`, body: "Say hi or start a game.", url: `/chats/${match!.id}`, tag: `match-${match!.id}` });
+  notify(them.id, { title: `🎉 It's a match with ${u.name}!`, body: "Say hi or start a game.", url: `/chats/${match!.id}`, tag: `match-${match!.id}` }, { ifAppHidden: true });
   track(u.id, "match");
   return { matched: true, matchId: match!.id };
 }
@@ -465,6 +465,7 @@ api.post("/matches/:id/games", async (req, res) => {
     .get<{ id: number }>(m.id, uid, b.type, JSON.stringify(prompt), JSON.stringify(answers));
   res.json(await pushMessage(m.id, uid, "game", String(g!.id), [m.a_id, m.b_id]));
   const other = await getUser(m.a_id === uid ? m.b_id : m.a_id);
+  if (other) notify(other.id, { title: `🎲 ${me(req).name} sent you an icebreaker`, body: "Answer to see what they picked.", url: `/chats/${m.id}`, tag: `chat-${m.id}` });
   if (other && isDemoUser(other.phone)) botPlays(g!.id, other.id);
 });
 
@@ -482,6 +483,9 @@ export async function answerGame(gameId: number, uid: number, answer: number | s
   await db.prepare("UPDATE games SET answers=? WHERE id=?").run(JSON.stringify(answers), g.id);
   const view = viewGame({ ...g, answers: JSON.stringify(answers) }, players);
   for (const p of players) emitToUser(p, "game", { matchId: g.match_id, game: view });
+  const who = await getUser(uid);
+  for (const p of players)
+    if (p !== uid) notify(p, { title: `🎲 ${who?.name || "Your match"} answered`, body: "See how your answers compare.", url: `/chats/${g.match_id}`, tag: `chat-${g.match_id}` });
   if (isComplete(g.type as GameType, answers, g.creator_id, players)) {
     // clients render the reveal
   }
@@ -526,6 +530,15 @@ api.post("/matches/:id/meet", async (req, res) => {
     await pushMessage(m.id, uid, "system", "You both agreed to meet. Coach details are now visible. Meet in a public area and trust your instincts.", players);
   }
   for (const p of players) emitToUser(p, "meet", await matchOut(fresh, p));
+  if (b.want && otherUser) {
+    const both = fresh.a_meet && fresh.b_meet;
+    notify(otherUser.id, {
+      title: both ? `🤝 You and ${me(req).name} agreed to meet` : `🤝 ${me(req).name} wants to meet`,
+      body: both ? "Coach details are now visible in the chat." : "Tap Meet too if you'd like to. Your coach stays hidden until you do.",
+      url: `/chats/${m.id}`,
+      tag: `chat-${m.id}`,
+    });
+  }
   res.json(await matchOut(fresh, uid));
 });
 

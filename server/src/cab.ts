@@ -143,7 +143,7 @@ api.post("/cabs/:id/request", limit("cabreq", 20, 3600_000), async (req, res) =>
   await db.prepare("INSERT INTO cab_members (cab_id, user_id, status) VALUES (?,?,'pending') ON CONFLICT (cab_id, user_id) DO NOTHING").run(c.id, u.id);
   emitToUser(c.owner_id, "cab:request", { cabId: c.id, from: publicUser(u), tripKey: c.trip_key });
   const ownerTrip = await db.prepare("SELECT id FROM trips WHERE user_id=? AND trip_key=?").get<{ id: number }>(c.owner_id, c.trip_key);
-  notify(c.owner_id, { title: `🚕 ${u.name} wants to share your cab`, body: `To ${c.drop_area}. Open the Cab tab to accept.`, url: ownerTrip ? `/trips/${ownerTrip.id}` : "/", tag: `cab-${c.id}` });
+  notify(c.owner_id, { title: `🚕 ${u.name} wants to share your cab`, body: `To ${c.drop_area}. Open the Cab tab to accept.`, url: ownerTrip ? `/trips/${ownerTrip.id}` : "/", tag: `cab-${c.id}` }, { ifAppHidden: true });
   track(u.id, "cab_requested");
   res.json(await cabView(c, u));
 });
@@ -161,8 +161,10 @@ api.post("/cabs/:id/respond", async (req, res) => {
   await db.prepare("UPDATE cab_members SET status=? WHERE cab_id=? AND user_id=?").run(b.accept ? "accepted" : "declined", c.id, b.userId);
   emitToUser(b.userId, "cab:update", { cabId: c.id, tripKey: c.trip_key, accepted: b.accept });
   if (b.accept) {
-    notify(b.userId, { title: "🚕 You're in the cab!", body: `${u.name} accepted you for the ride to ${c.drop_area}.`, url: `/groups/${c.room_id}`, tag: `cab-${c.id}` });
+    notify(b.userId, { title: "🚕 You're in the cab!", body: `${u.name} accepted you for the ride to ${c.drop_area}.`, url: `/groups/${c.room_id}`, tag: `cab-${c.id}` }, { ifAppHidden: true });
     track(u.id, "cab_accepted");
+  } else {
+    notify(b.userId, { title: "🚕 Cab share update", body: `The ride to ${c.drop_area} is full or not a match this time. Check other cabs on your trip.`, url: "/", tag: `cab-${c.id}` }, { ifAppHidden: true });
   }
   await notifyGroup(c, "cab:update");
   res.json(await cabView(c, u));
