@@ -311,6 +311,14 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS banned INTEGER DEFAULT 0;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS accepted_terms_at TIMESTAMPTZ;
 ALTER TABLE reports ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'open';
 ALTER TABLE message_reports ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'open';
+-- Google / email login (phone is now optional).
+ALTER TABLE users ALTER COLUMN phone DROP NOT NULL;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified INTEGER DEFAULT 0;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS firebase_uid TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_provider TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users (lower(email)) WHERE email IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_fuid ON users (firebase_uid) WHERE firebase_uid IS NOT NULL;
 -- Dev only: keys for demo travellers so they can sign group messages.
 CREATE TABLE IF NOT EXISTS demo_keys (
   user_id INTEGER PRIMARY KEY,
@@ -328,7 +336,11 @@ export function initDb() {
 
 export type UserRow = {
   id: number;
-  phone: string;
+  phone: string | null;
+  email?: string | null;
+  email_verified?: number;
+  firebase_uid?: string | null;
+  auth_provider?: string | null;
   name: string | null;
   age: number | null;
   gender: string | null;
@@ -374,6 +386,9 @@ export function selfUser(u: UserRow) {
   return {
     ...publicUser(u),
     phone: u.phone,
+    email: u.email ?? null,
+    emailVerified: !!u.email_verified,
+    provider: u.auth_provider || (u.phone ? "phone" : null),
     showMe: u.show_me,
     womenOnly: !!u.women_only,
     hidden: !!u.hidden,

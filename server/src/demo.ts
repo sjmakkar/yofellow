@@ -4,8 +4,8 @@ import { db } from "./db.js";
 
 export const DEMO_BOTS = process.env.DEMO_BOTS !== "0" && process.env.NODE_ENV !== "production";
 
-export function isDemoUser(phone: string) {
-  return DEMO_BOTS && /^900000000\d$/.test(phone);
+export function isDemoUser(phone: string | null | undefined) {
+  return DEMO_BOTS && !!phone && /^900000000\d$/.test(phone);
 }
 
 const REPLIES = [
@@ -71,7 +71,7 @@ export async function demoGroupReply(
   if (Math.random() > 0.6) return;
   const bots = await db
     .prepare("SELECT u.id, u.name, u.phone FROM trips t JOIN users u ON u.id=t.user_id WHERE t.trip_key=? AND u.id<>?")
-    .all<{ id: number; name: string; phone: string }>(room.trip_key, fromUser);
+    .all<{ id: number; name: string; phone: string | null }>(room.trip_key, fromUser);
   const demo = bots.filter((b) => isDemoUser(b.phone));
   if (!demo.length) return;
   const bot = demo[Math.floor(Math.random() * demo.length)];

@@ -16,6 +16,7 @@ import CabGroup from "./pages/CabGroup";
 import Admin from "./pages/Admin";
 import { Privacy, Terms } from "./pages/Legal";
 import { refreshPush } from "./lib/push";
+import { firebaseSignOut } from "./lib/auth";
 import { startOutbox } from "./lib/outbox";
 import { registerDeviceKey } from "./lib/keys";
 import { wireGroupSync } from "./lib/group";
@@ -100,6 +101,7 @@ export default function App() {
   }, [me, toast]);
 
   const logout = () => {
+    firebaseSignOut();
     clearAll();
     tokenStore.set(null);
     closeSocket();

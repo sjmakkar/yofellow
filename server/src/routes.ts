@@ -41,26 +41,61 @@ const phoneSchema = z.string().regex(/^\+?\d{10,13}$/, "enter a valid phone numb
 api.get("/config", async (_req, res) => {
   res.json({
     firebase: firebaseConfig(),
+    // Which sign in buttons to show. Phone SMS costs money, so it is off unless PHONE_LOGIN=1.
+    loginMethods: firebaseConfig() ? ["google", "email", ...(PHONE_LOGIN ? ["phone"] : [])] : ["dev"],
     vapidPublicKey: (await vapidKeys()).public_key,
     supportEmail: process.env.SUPPORT_EMAIL || null,
   });
 });
 
-async function loginByPhone(phone: string) {
-  let user = await db.prepare("SELECT * FROM users WHERE phone=?").get<UserRow>(phone);
+const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || "").split(",").map((e) => e.trim().toLowerCase()).filter(Boolean);
+const PHONE_LOGIN = process.env.PHONE_LOGIN === "1";
+
+/** Log in (or sign up) someone whose identity is already checked. */
+async function loginUser(id: { uid?: string; email?: string | null; emailVerified?: boolean; phone?: string | null; provider: string; name?: string | null }) {
+  const email = id.emailVerified && id.email ? id.email.toLowerCase() : null;
+  const phone = id.phone ? id.phone.replace(/^\+91/, "") : null;
+  let user =
+    (id.uid ? await db.prepare("SELECT * FROM users WHERE firebase_uid=?").get<UserRow>(id.uid) : undefined) ??
+    (email ? await db.prepare("SELECT * FROM users WHERE lower(email)=?").get<UserRow>(email) : undefined) ??
+    (phone ? await db.prepare("SELECT * FROM users WHERE phone=?").get<UserRow>(phone) : undefined);
+
   if (!user) {
-    const r = await db.prepare("INSERT INTO users (phone) VALUES (?) ON CONFLICT (phone) DO NOTHING RETURNING id").get<{ id: number }>(phone);
-    user = r ? await getUser(r.id) : await db.prepare("SELECT * FROM users WHERE phone=?").get<UserRow>(phone);
-    if (r) track(r.id, "signup");
+    const first = id.name?.trim().split(/\s+/)[0]?.slice(0, 40) || null;
+    const r = await db
+      .prepare(
+        "INSERT INTO users (phone, email, email_verified, firebase_uid, auth_provider, name) VALUES (?,?,?,?,?,?) ON CONFLICT DO NOTHING RETURNING id"
+      )
+      .get<{ id: number }>(phone, email, email ? 1 : 0, id.uid ?? null, id.provider, first);
+    if (!r) return { error: "Please try again" };
+    user = (await getUser(r.id))!;
+    track(r.id, "signup", { provider: id.provider });
+  } else {
+    // Link the Firebase account, and pick up a changed (and verified) email address.
+    const emailTaken = email && email !== user.email?.toLowerCase()
+      ? await db.prepare("SELECT 1 FROM users WHERE lower(email)=? AND id<>?").get(email, user.id)
+      : null;
+    await db
+      .prepare("UPDATE users SET firebase_uid=COALESCE(firebase_uid, ?), email=?, email_verified=?, auth_provider=? WHERE id=?")
+      .run(
+        id.uid ?? null,
+        email && !emailTaken ? email : user.email ?? null,
+        (email && !emailTaken) || user.email_verified ? 1 : 0,
+        id.provider,
+        user.id
+      );
+    user = (await getUser(user.id))!;
   }
-  if (user!.banned) return { error: "This account has been suspended for breaking the community rules." };
-  if (ADMIN_PHONES.includes(phone) && !user!.is_admin) {
-    await db.prepare("UPDATE users SET is_admin=1 WHERE id=?").run(user!.id);
-    user = await getUser(user!.id);
+  if (user.banned) return { error: "This account has been suspended for breaking the community rules." };
+  const admin = (user.phone && ADMIN_PHONES.includes(user.phone)) || (user.email && ADMIN_EMAILS.includes(user.email.toLowerCase()));
+  if (admin && !user.is_admin) {
+    await db.prepare("UPDATE users SET is_admin=1 WHERE id=?").run(user.id);
+    user = (await getUser(user.id))!;
   }
-  track(user!.id, "login");
-  return { token: signToken(user!.id), user: selfUser(user!) };
+  track(user.id, "login", { provider: id.provider });
+  return { token: signToken(user.id), user: selfUser(user) };
 }
+const loginByPhone = (phone: string) => loginUser({ phone, provider: "phone" });
 
 api.post("/auth/request-otp", limit("otp", 5, 10 * MIN, "ip"), async (req, res) => {
   if (firebaseConfig()) return bad(res, "Use phone sign in from the app");
@@ -85,9 +120,23 @@ api.post("/auth/verify", limit("verify", 10, 10 * MIN, "ip"), async (req, res) =
 api.post("/auth/firebase", limit("firebase", 60, 10 * MIN, "ip"), async (req, res) => {
   const body = parse(z.object({ idToken: z.string().min(20) }), req.body, res);
   if (!body) return;
-  const phone = await verifyFirebaseToken(body.idToken);
-  if (!phone) return bad(res, "Phone verification failed, please try again", 401);
-  const r = await loginByPhone(phone.replace(/^\+91/, ""));
+  const id = await verifyFirebaseToken(body.idToken);
+  if (!id) return bad(res, "Sign in failed, please try again", 401);
+  if (id.provider === "phone" && !PHONE_LOGIN) return bad(res, "Phone sign in is turned off. Please use Google or email.", 403);
+  if (id.provider === "password" && !id.emailVerified)
+    return res.status(403).json({ error: "Please verify your email first. We sent you a link.", needsVerification: true });
+  if (!id.email && !id.phone) return bad(res, "Your account has no email address", 400);
+  const r = await loginUser(id);
+  if ("error" in r) return bad(res, r.error!, 403);
+  res.json(r);
+});
+
+/** Local development only: log in with any email, no password (Firebase not set up). */
+api.post("/auth/dev-email", limit("verify", 10, 10 * MIN, "ip"), async (req, res) => {
+  if (firebaseConfig() || !DEV_OTP) return bad(res, "Not available", 404);
+  const body = parse(z.object({ email: z.string().trim().email().max(200), name: z.string().trim().max(40).optional() }), req.body, res);
+  if (!body) return;
+  const r = await loginUser({ uid: `dev:${body.email.toLowerCase()}`, email: body.email, emailVerified: true, provider: "password", name: body.name });
   if ("error" in r) return bad(res, r.error!, 403);
   res.json(r);
 });

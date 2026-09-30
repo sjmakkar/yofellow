@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { api, tokenStore, INTENT_LABEL, type Intent, type Me } from "../api";
 import { useApp } from "../App";
 import Feedback from "../components/Feedback";
+import { changeEmail, resetPassword } from "../lib/auth";
 import { currentSubscription, disablePush, enablePush, isIos, isStandalone, pushSupported } from "../lib/push";
 
 const SUGGESTED = ["music", "movies", "books", "travel", "cricket", "football", "coding", "startups", "ai", "food", "chai", "trekking", "photography", "art", "gaming", "fitness", "anime", "debate", "dance", "guitar"];
@@ -198,6 +199,8 @@ export default function Profile({ onboarding = false }: { onboarding?: boolean }
         {onboarding ? "Start travelling" : "Save"}
       </button>
 
+      {!onboarding && <Account />}
+
       {!onboarding && <Notifications />}
 
       {!onboarding && (
@@ -296,6 +299,92 @@ function Notifications() {
           )}
         </>
       )}
+    </div>
+  );
+}
+
+const PROVIDER: Record<string, string> = { "google.com": "Google", password: "email and password", phone: "phone number" };
+
+function Account() {
+  const { me, toast } = useApp();
+  const [open, setOpen] = useState(false);
+  const [newEmail, setNewEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [err, setErr] = useState("");
+  if (!me) return null;
+  const provider = me.provider || (me.phone ? "phone" : "");
+  const isPassword = provider === "password" && !!me.email;
+
+  async function doChange(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setErr("");
+    setMsg("");
+    try {
+      await changeEmail(newEmail, password);
+      setMsg(`We sent a link to ${newEmail}. Your email changes only after you tap it, so your account stays verified. Then sign in with the new email.`);
+      setPassword("");
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function doReset() {
+    try {
+      await resetPassword(me!.email!);
+      toast(`Password reset link sent to ${me!.email}`);
+    } catch (e) {
+      toast((e as Error).message);
+    }
+  }
+
+  return (
+    <div className="card stack">
+      <span className="label">Account</span>
+      <div className="row between">
+        <div className="stack tight">
+          <b>{me.email || me.phone || "No email"}</b>
+          <small className="muted">Signed in with {PROVIDER[provider] || provider || "dev login"}</small>
+        </div>
+        {me.emailVerified || me.phone ? <span className="verified">✓ Verified</span> : <span className="unverified">Not verified</span>}
+      </div>
+      {provider === "google.com" && <p className="hint">Your email comes from your Google account.</p>}
+      {isPassword && !open && (
+        <div className="row wrap">
+          <button type="button" className="btn small" onClick={() => setOpen(true)}>
+            Change email
+          </button>
+          <button type="button" className="btn small ghost" onClick={doReset}>
+            Reset password
+          </button>
+        </div>
+      )}
+      {isPassword && open && (
+        <form className="stack" onSubmit={doChange}>
+          <label>
+            New email
+            <input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} required />
+          </label>
+          <label>
+            Current password
+            <input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+          </label>
+          <div className="row wrap">
+            <button className="btn small primary" disabled={busy || !newEmail.includes("@") || !password}>
+              {busy ? "Sending…" : "Send verification link"}
+            </button>
+            <button type="button" className="btn small ghost" onClick={() => setOpen(false)}>
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
+      {msg && <p className="info">{msg}</p>}
+      {err && <p className="error">{err}</p>}
     </div>
   );
 }

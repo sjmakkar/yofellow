@@ -5,7 +5,7 @@ Meet people on the same train, flight, bus or metro. Chat in the journey's group
 ## Features
 
 **Social**
-- Phone OTP login (dev code `123456`), profile with interests and intent (Friends / Dating / Just chat, per trip)
+- Login with **Google** or **email + password** (email must be verified; both free on Firebase). SMS phone login is still in the code but off unless `PHONE_LOGIN=1`. Locally, a dev login takes any email. Profile with interests and intent (Friends / Dating / Just chat, per trip)
 - **Group rooms per journey**, joined automatically: Whole train, My coach, Women only, plus topic rooms anyone can start
 - People tab: co-travellers ranked by a 0 to 100 vibe score; wave, and a mutual wave opens a private chat
 - Private chat with typing indicator and 5 icebreaker games
@@ -60,15 +60,15 @@ Browsers cannot use Bluetooth mesh. In dev, `server/src/radio.ts` stands in for 
 ## Deploy (pilot): Neon + Firebase + Render
 
 1. **Neon** (neon.tech): create a project (region Singapore or Mumbai) and copy the connection string (`postgresql://...?sslmode=require`). Tables are created automatically on first start.
-2. **Firebase** (console.firebase.google.com): create a project, enable **Authentication → Sign-in method → Phone**, and register a **Web app** to get `apiKey`, `authDomain`, `projectId`, `appId`. Optional: add test numbers under Phone → Phone numbers for testing.
-3. **Render** (render.com): **New → Blueprint**, pick this GitHub repo. `render.yaml` sets everything up and asks for `DATABASE_URL` and the four `FIREBASE_*` values. `JWT_SECRET` is generated for you. Also set `ADMIN_PHONES` (your number, 10 digits, comma separated for more) and `SUPPORT_EMAIL` (shown in Privacy/Terms and used as the push contact).
-4. After the first deploy, copy your Render address (like `yofellow.onrender.com`) into **Firebase → Authentication → Settings → Authorized domains**, or SMS login will be blocked.
+2. **Firebase** (console.firebase.google.com): create a project, register a **Web app** to get `apiKey`, `authDomain`, `projectId`, `appId`, then in **Authentication → Sign-in method** enable **Google** (pick a support email) and **Email/Password** (leave "Email link" off, its free limit is 5 a day). Optional: **Authentication → Templates** to set the sender name "YoFellow" on the verification and password reset emails.
+3. **Render** (render.com): **New → Blueprint**, pick this GitHub repo. `render.yaml` sets everything up and asks for `DATABASE_URL` and the four `FIREBASE_*` values. `JWT_SECRET` is generated for you. Also set `ADMIN_EMAILS` (your email, comma separated for more) and `SUPPORT_EMAIL` (shown in Privacy/Terms and used as the push contact).
+4. After the first deploy, copy your Render address (like `yofellow.onrender.com`) into **Firebase → Authentication → Settings → Authorized domains**, or Google sign in will be blocked.
 5. Open the Render URL on your phone and use **Add to Home screen** to install it like an app.
 
 Notes:
 - Render's free plan sleeps after 15 minutes without visits; the next visit takes about a minute to wake up. The $7/month plan stays awake.
 - In production the dev login (123456), demo travellers and the radio hub are all switched off.
-- Firebase gives a limited number of free SMS; check current pricing before inviting many people.
+- Firebase free plan: Google sign in has no per-user cost; up to 1,000 verification emails and 150 password reset emails a day. SMS is paid, which is why phone login is off.
 - Push keys (VAPID) are generated on first start and saved in the database, so nothing to configure. Rate limits live in memory, which is fine for one Render instance.
 
 ## Code map

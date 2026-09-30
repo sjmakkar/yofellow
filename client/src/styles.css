@@ -353,3 +353,15 @@ textarea { resize: none; }
 .table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .table td { padding: 6px 4px; border-bottom: 1px solid var(--line); text-transform: capitalize; }
 .table td.num { text-align: right; font-weight: 600; }
+
+/* ---------- login: Google + email ---------- */
+.btn.google { background: #fff; color: #1f1f1f; border: 1px solid #dadce0; display: flex; align-items: center; justify-content: center; gap: 10px; font-weight: 600; }
+.btn.google:disabled { opacity: 0.7; }
+.divider { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13px; }
+.divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.linkbtn { background: none; border: 0; padding: 4px 0; color: var(--brand); font: inherit; font-size: 14px; cursor: pointer; text-align: center; }
+.info { color: var(--brand); font-size: 14px; background: var(--brand-soft); padding: 10px 12px; border-radius: 12px; }
+.bigicon { font-size: 44px; line-height: 1; }
+.login .card h3 { margin: 0; }
+.verified { color: var(--brand); font-weight: 600; font-size: 13px; }
+.unverified { color: var(--warm); font-weight: 600; font-size: 13px; }

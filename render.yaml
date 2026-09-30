@@ -26,7 +26,7 @@ services:
         sync: false
       - key: FIREBASE_APP_ID
         sync: false
-      - key: ADMIN_PHONES     # your phone, 10 digits (comma separated for more admins)
+      - key: ADMIN_EMAILS     # your email (comma separated for more admins)
         sync: false
       - key: SUPPORT_EMAIL    # shown in Privacy/Terms, used as the push contact
         sync: false

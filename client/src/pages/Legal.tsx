@@ -41,7 +41,7 @@ export function Privacy() {
 
       <h3>What we collect</h3>
       <ul>
-        <li><b>Account:</b> your phone number (to log you in), first name, age, gender, city, bio and interests.</li>
+        <li><b>Account:</b> your email address (from Google, or the one you sign up with) to log you in, and your first name, age, gender, city, bio and interests. If you sign in with Google we only get your name and email, never your Google password or other Google data.</li>
         <li><b>Journeys:</b> the trips you add (mode, number, date, optional coach, from and to).</li>
         <li><b>Messages:</b> private chats, group room messages, game moves and cab share posts.</li>
         <li><b>Signal map:</b> if you allow location, where your network dropped along a route, so we can warn others about dead zones.</li>
@@ -50,7 +50,7 @@ export function Privacy() {
       </ul>
 
       <h3>What others see</h3>
-      <p>Co-travellers see your first name, age, gender, city, bio and interests. Your phone number is never shown. Your coach or seat is only revealed if both of you tap "meet". Women only mode hides you from men entirely.</p>
+      <p>Co-travellers see your first name, age, gender, city, bio and interests. Your email address is never shown. Your coach or seat is only revealed if both of you tap "meet". Women only mode hides you from men entirely.</p>
 
       <h3>Offline and nearby phones</h3>
       <p>When there is no network, messages in public train rooms can hop between nearby YoFellow phones. They are signed so they can't be faked. Private chats, coach rooms and women rooms never travel this way.</p>
@@ -59,7 +59,7 @@ export function Privacy() {
       <p>Only to run YoFellow: matching you with co-travellers, delivering messages, keeping people safe (reports, blocks, moderation) and improving the app. We do not sell your data or show ads.</p>
 
       <h3>Who we share it with</h3>
-      <p>Service providers that run the app for us: hosting (Render), database (Neon), SMS login (Google Firebase) and your browser's push service. We may share data if the law requires it, or to protect someone's safety.</p>
+      <p>Service providers that run the app for us: hosting (Render), database (Neon), sign in (Google Firebase) and your browser's push service. We may share data if the law requires it, or to protect someone's safety.</p>
 
       <h3>How long we keep it</h3>
       <p>As long as your account exists. Group rooms are archived after the journey. When you delete your account, your profile, trips, chats and messages are deleted from our database.</p>
@@ -90,7 +90,7 @@ export function Terms() {
       <p>By using YoFellow you agree to these terms. If you don't agree, please don't use the app.</p>
 
       <h3>Who can use it</h3>
-      <p>You must be 18 or older and give true details about yourself. One account per person.</p>
+      <p>You must be 18 or older and give true details about yourself. One account per person, with an email address you have verified.</p>
 
       <h3>Be a good fellow</h3>
       <ul>
@@ -103,7 +103,7 @@ export function Terms() {
       <p>We can hide content, and suspend or delete accounts that break these rules, with or without warning.</p>
 
       <h3>Meeting people and sharing cabs</h3>
-      <p>YoFellow introduces travellers. We don't verify identities beyond your phone number and we are not responsible for how people behave. Meet in public places, tell someone where you are, and trust your gut. Cab bookings happen in the cab company's app, and fares are agreed between riders. In an emergency call 112.</p>
+      <p>YoFellow introduces travellers. We don't verify identities beyond your email address and we are not responsible for how people behave. Meet in public places, tell someone where you are, and trust your gut. Cab bookings happen in the cab company's app, and fares are agreed between riders. In an emergency call 112.</p>
 
       <h3>Your content</h3>
       <p>You own what you post. You give us permission to store and show it to the people it's meant for, so the app can work. Report anything harmful from the chat or room menu.</p>

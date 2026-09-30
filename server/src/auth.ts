@@ -25,9 +25,9 @@ export function verifyToken(token: string): number | null {
   }
 }
 
-// ---------- Firebase phone auth ----------
-// The app does the SMS step with Firebase. It sends us the Firebase ID token and
-// we check it against Google's public keys. No Firebase service account needed.
+// ---------- Firebase auth (Google, email + password, phone) ----------
+// The app signs in with Firebase. It sends us the Firebase ID token and we check it
+// against Google's public keys. No Firebase service account needed.
 export function firebaseConfig() {
   const { FIREBASE_API_KEY, FIREBASE_AUTH_DOMAIN, FIREBASE_PROJECT_ID, FIREBASE_APP_ID } = process.env;
   if (!FIREBASE_API_KEY || !FIREBASE_PROJECT_ID) return null;
@@ -39,12 +39,22 @@ export function firebaseConfig() {
   };
 }
 
+// FIREBASE_JWKS_URL only exists so tests can use their own signing keys.
 const GOOGLE_KEYS = createRemoteJWKSet(
-  new URL("https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com")
+  new URL(process.env.FIREBASE_JWKS_URL || "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com")
 );
 
-/** Returns the verified phone number (+91...) or null. */
-export async function verifyFirebaseToken(idToken: string): Promise<string | null> {
+export type FirebaseIdentity = {
+  uid: string;
+  provider: string; // 'google.com' | 'password' | 'phone'
+  email: string | null;
+  emailVerified: boolean;
+  phone: string | null;
+  name: string | null;
+};
+
+/** Checks a Firebase ID token and returns who it belongs to, or null. */
+export async function verifyFirebaseToken(idToken: string): Promise<FirebaseIdentity | null> {
   const cfg = firebaseConfig();
   if (!cfg) return null;
   try {
@@ -52,8 +62,16 @@ export async function verifyFirebaseToken(idToken: string): Promise<string | nul
       issuer: `https://securetoken.google.com/${cfg.projectId}`,
       audience: cfg.projectId,
     });
-    const phone = payload.phone_number;
-    return typeof phone === "string" && payload.sub ? phone : null;
+    if (!payload.sub) return null;
+    const p = payload as Record<string, any>;
+    return {
+      uid: payload.sub,
+      provider: String(p.firebase?.sign_in_provider || ""),
+      email: typeof p.email === "string" ? p.email.toLowerCase() : null,
+      emailVerified: p.email_verified === true,
+      phone: typeof p.phone_number === "string" ? p.phone_number : null,
+      name: typeof p.name === "string" ? p.name : null,
+    };
   } catch {
     return null;
   }

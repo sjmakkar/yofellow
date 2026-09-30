@@ -15,7 +15,10 @@ export type PublicUser = {
   intent: Intent;
 };
 export type Me = PublicUser & {
-  phone: string;
+  phone: string | null;
+  email?: string | null;
+  emailVerified?: boolean;
+  provider?: string | null;
   showMe: "everyone" | "women" | "men";
   womenOnly: boolean;
   hidden: boolean;

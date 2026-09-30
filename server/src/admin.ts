@@ -1,5 +1,5 @@
 // Admin panel API: pilot stats, reports queue, bans, hidden messages, feedback.
-// Admins are the phone numbers listed in ADMIN_PHONES (comma separated).
+// Admins are the emails in ADMIN_EMAILS or phone numbers in ADMIN_PHONES (comma separated).
 import type { Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import { db, publicUser, type UserRow } from "./db.js";
@@ -13,7 +13,13 @@ function requireAdmin(req: Request, res: Response, next: NextFunction) {
 }
 
 const mask = (phone: string) => (phone.length > 4 ? `${"•".repeat(Math.max(0, phone.length - 4))}${phone.slice(-4)}` : phone);
-const adminUser = (u: UserRow) => ({ ...publicUser(u), phone: mask(u.phone), hidden: !!u.hidden, banned: !!u.banned, isAdmin: !!u.is_admin });
+const maskEmail = (e: string) => {
+  const [name, domain] = e.split("@");
+  return `${name.slice(0, 2)}${"•".repeat(Math.max(1, name.length - 2))}@${domain}`;
+};
+/** Contact shown to admins, partly hidden: "••••••3210" or "sh•••••@gmail.com". */
+const contact = (u: UserRow) => (u.email ? maskEmail(u.email) : u.phone ? mask(u.phone) : "");
+const adminUser = (u: UserRow) => ({ ...publicUser(u), phone: contact(u), hidden: !!u.hidden, banned: !!u.banned, isAdmin: !!u.is_admin, provider: u.auth_provider || "phone" });
 
 // ---------- stats ----------
 api.get("/admin/stats", requireAdmin, async (req, res) => {
@@ -32,7 +38,7 @@ api.get("/admin/stats", requireAdmin, async (req, res) => {
     .all<{ day: string; users: number }>(String(days));
   const one = async (sql: string) => (await db.prepare(sql).get<{ n: number }>())?.n ?? 0;
   const totals = {
-    users: await one("SELECT COUNT(*)::int n FROM users WHERE name IS NOT NULL AND phone NOT LIKE '900000000%'"),
+    users: await one("SELECT COUNT(*)::int n FROM users WHERE name IS NOT NULL AND (phone IS NULL OR phone NOT LIKE '900000000%')"),
     active7d: await one("SELECT COUNT(DISTINCT user_id)::int n FROM events WHERE created_at > now() - interval '7 days' AND user_id IS NOT NULL"),
     trips: await one("SELECT COUNT(*)::int n FROM trips"),
     matches: await one("SELECT COUNT(*)::int n FROM matches"),
@@ -131,7 +137,7 @@ api.post("/admin/messages/:uuid/:action", requireAdmin, async (req, res) => {
 api.get("/admin/users", requireAdmin, async (req, res) => {
   const q = String(req.query.q || "").trim();
   const rows = q
-    ? await db.prepare("SELECT * FROM users WHERE name ILIKE ? OR phone LIKE ? ORDER BY id DESC LIMIT 50").all<UserRow>(`%${q}%`, `%${q}`)
+    ? await db.prepare("SELECT * FROM users WHERE name ILIKE ? OR phone LIKE ? OR email ILIKE ? ORDER BY id DESC LIMIT 50").all<UserRow>(`%${q}%`, `%${q}`, `%${q}%`)
     : await db.prepare("SELECT * FROM users WHERE banned=1 OR hidden=1 ORDER BY id DESC LIMIT 50").all<UserRow>();
   res.json(rows.map(adminUser));
 });
